@@ -1,3 +1,14 @@
+mod cli;
+mod commands;
+
+use clap::Parser;
+use crate::cli::{Cli, Command};
+use crate::commands::init;
+
 fn main() {
-    println!("Hello, world!");
+    let args = Cli::parse();
+
+    match args.command {
+        Command::Init(args) => init::run(args)
+    };
 }
