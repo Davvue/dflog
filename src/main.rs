@@ -1,23 +1,32 @@
 mod cli;
 mod commands;
+mod config;
+mod error;
+mod workspace;
 
 use crate::cli::{Cli, Command};
 use crate::commands::init;
 use clap::Parser;
+use std::process::ExitCode;
 
-fn main() {
+fn main() -> ExitCode {
     let args = Cli::parse();
 
-    let execution_result = match args.command {
-        Command::Init(args) => init::run(args),
-    };
+    match run(args) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{} error: {}", env!("CARGO_PKG_NAME"), error);
+            ExitCode::FAILURE
+        }
+    }
+}
 
-    match execution_result {
-        Ok(_) => (),
-        Err(error) => eprintln!(
-            "{} error: {}",
-            option_env!("CARGO_PKG_NAME").unwrap_or("dflog"),
-            error
-        ),
+fn run(args: Cli) -> error::Result<()> {
+    if let Some(dir) = &args.chdir {
+        std::env::set_current_dir(dir)?;
+    }
+
+    match args.command {
+        Command::Init(args) => init::run(args),
     }
 }

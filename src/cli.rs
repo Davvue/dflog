@@ -1,19 +1,33 @@
 use clap::{Args, Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(version, about)]
 pub struct Cli {
+    /// Run as if dflog was started in <PATH> instead of the current directory
+    #[arg(short = 'C', global = true, value_name = "PATH")]
+    pub chdir: Option<PathBuf>,
+
     #[command(subcommand)]
     pub command: Command,
 }
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Create a new dflog workspace
     Init(InitArgs),
 }
 
 #[derive(Args)]
 pub struct InitArgs {
+    /// Name of the examiner responsible for this case
+    #[arg(long)]
+    pub examiner: String,
+
+    /// Case identifier
+    #[arg(long)]
+    pub case_id: String,
+
     #[arg(default_value = "./")]
-    pub base_path: std::path::PathBuf,
+    pub base_path: PathBuf,
 }

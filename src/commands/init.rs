@@ -1,17 +1,20 @@
 use crate::cli::InitArgs;
+use crate::config::{CaseConfig, Config};
+use crate::error::Result;
+use crate::workspace::Workspace;
 
-const WORKING_DIR: &str = "working";
-const HASH_DIR: &str = ".dflog/hash";
-const CMD_OUT_DIR: &str = ".dflog/cmd-out";
-
-pub fn run(init_args: InitArgs) -> std::io::Result<()> {
-    std::fs::create_dir_all(init_args.base_path.join(WORKING_DIR))?;
-    std::fs::create_dir_all(init_args.base_path.join(HASH_DIR))?;
-    std::fs::create_dir_all(init_args.base_path.join(CMD_OUT_DIR))?;
+pub fn run(init_args: InitArgs) -> Result<()> {
+    let config = Config {
+        case: CaseConfig {
+            examiner: init_args.examiner,
+            case_id: init_args.case_id,
+        },
+    };
+    let ws = Workspace::create(&init_args.base_path, config)?;
 
     println!(
         "Initializing successful. Place case files in '{}'",
-        init_args.base_path.join(WORKING_DIR).display()
+        ws.working_dir().display()
     );
     println!(
         "\tUse '{} run -- <cmd>' to automatically create hashes and log entries",
