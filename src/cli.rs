@@ -9,17 +9,11 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    Init(InitArgs)
+    Init(InitArgs),
 }
 
 #[derive(Args)]
 pub struct InitArgs {
     #[arg(default_value = "./")]
     pub base_path: std::path::PathBuf,
-
-    #[arg(short, long)]
-    pub examiner_name: Option<String>,
-
-    #[arg(short, long)]
-    pub case_id: Option<String>,
 }
