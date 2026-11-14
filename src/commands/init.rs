@@ -1,5 +1,5 @@
 use crate::cli::InitArgs;
-use crate::config::{CaseConfig, Config};
+use crate::config::{CaseConfig, Config, HashConfig};
 use crate::error::Result;
 use crate::workspace::Workspace;
 
@@ -9,6 +9,9 @@ pub fn run(init_args: InitArgs) -> Result<()> {
             examiner: init_args.examiner,
             case_id: init_args.case_id,
         },
+        hash: HashConfig {
+            algorithm: init_args.hash
+        }
     };
     let ws = Workspace::create(&init_args.base_path, config)?;
 

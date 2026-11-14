@@ -15,7 +15,6 @@ pub struct Workspace {
 }
 
 // `discover` and some helpers are used by the upcoming non-init subcommands.
-#[allow(dead_code)]
 impl Workspace {
     /// Walks up from `start` until a directory containing `.dflog` is found,
     /// then loads its config. A broken config is an error; the search does
@@ -77,6 +76,7 @@ fn config_path(root: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use crate::hash::HashAlgorithm;
     use super::*;
 
     fn sample_config() -> Config {
@@ -85,6 +85,9 @@ mod tests {
                 examiner: "Jane Doe".into(),
                 case_id: "2026-0001".into(),
             },
+            hash: crate::config::HashConfig {
+                algorithm: HashAlgorithm::Sha512
+            }
         }
     }
 
@@ -125,6 +128,21 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let ws = Workspace::create(tmp.path(), sample_config()).unwrap();
         std::fs::write(ws.config_path(), "[case]\nexaminer = \"x\"\nbogus = 1\n").unwrap();
+        assert!(matches!(
+            Workspace::discover(tmp.path()),
+            Err(Error::ConfigParse { .. })
+        ));
+    }
+
+    #[test]
+    fn missing_hash_algorithm_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = Workspace::create(tmp.path(), sample_config()).unwrap();
+        std::fs::write(
+            ws.config_path(),
+            "[case]\nexaminer = \"x\"\ncase-id = \"y\"\n",
+        )
+        .unwrap();
         assert!(matches!(
             Workspace::discover(tmp.path()),
             Err(Error::ConfigParse { .. })
