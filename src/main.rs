@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod hash;
 mod workspace;
+mod journal;
 
 use crate::cli::{Cli, Command};
 use crate::commands::init;
