@@ -3,7 +3,6 @@ use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
 
 pub const DFLOG_DIR: &str = ".dflog";
-const HASH_DIR: &str = "hash";
 const CMD_OUT_DIR: &str = "cmd-out";
 const WORKING_DIR: &str = "working";
 
@@ -43,7 +42,6 @@ impl Workspace {
             config,
         };
         std::fs::create_dir_all(ws.working_dir())?;
-        std::fs::create_dir_all(ws.hash_dir())?;
         std::fs::create_dir_all(ws.cmd_out_dir())?;
         ws.config.save_new(&config_path)?;
         Ok(ws)
@@ -55,10 +53,6 @@ impl Workspace {
 
     pub fn config_path(&self) -> PathBuf {
         config_path(&self.root)
-    }
-
-    pub fn hash_dir(&self) -> PathBuf {
-        self.dflog_dir().join(HASH_DIR)
     }
 
     pub fn cmd_out_dir(&self) -> PathBuf {
