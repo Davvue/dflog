@@ -38,6 +38,9 @@ pub enum Error {
     #[error("journal is corrupt: {0}")]
     JournalCorrupt(String),
 
+    #[error("unsupported hash algorithm: {0}")]
+    UnsupportedHashAlgorithm(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

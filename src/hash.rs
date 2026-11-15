@@ -2,6 +2,8 @@ use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
 use std::io::{ErrorKind, Read};
+use std::str::FromStr;
+use crate::error::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ValueEnum)]
 #[serde(rename_all = "kebab-case")]
@@ -12,6 +14,11 @@ pub enum HashAlgorithm {
 }
 
 impl HashAlgorithm {
+    const ALL: [Self; 2] = [
+        HashAlgorithm::Sha256,
+        HashAlgorithm::Sha512
+    ];
+
     pub fn name(self) -> &'static str {
         match self {
             HashAlgorithm::Sha256 => "sha256",
@@ -28,6 +35,17 @@ impl HashAlgorithm {
 
     pub fn prefixed_digest<R: Read>(self, reader: R) -> std::io::Result<String> {
         Ok(format!("{}:{}", self.name(), self.digest(reader)?))
+    }
+}
+
+impl FromStr for HashAlgorithm {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        HashAlgorithm::ALL
+            .into_iter()
+            .find(|alg| alg.name() == s)
+            .ok_or_else(|| Error::UnsupportedHashAlgorithm(s.to_string()))
     }
 }
 

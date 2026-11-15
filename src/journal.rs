@@ -6,6 +6,7 @@ use crate::error::{Error, Result};
 use crate::hash::HashAlgorithm;
 use crate::workspace::Workspace;
 
+pub const LOG_VERSION: u32 = 1;
 const JOURNAL_FILE: &str = "journal.jsonl";
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -107,6 +108,12 @@ pub struct ProgramInfo {
     pub hash: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verification {
+    Valid { entries: u64, head: String },
+    Broken { line: u64, seq: Option<u64>, reason: String },
+}
+
 pub struct Journal {
     path: std::path::PathBuf,
     algorithm: HashAlgorithm
@@ -120,10 +127,11 @@ impl Journal {
 
         init_entry.seq = 0;
         init_entry.prev = None;
+        init_entry.log_version = LOG_VERSION;
         let ws_log = ws.dflog_dir().join(JOURNAL_FILE);
         let serialized = serde_json::to_string(&init_entry)?;
 
-        let mut file = std::fs::OpenOptions::new()
+        let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&ws_log)
@@ -158,17 +166,18 @@ impl Journal {
     pub fn append(&self, mut entry: Entry) -> Result<Entry> {
         let mut file = OpenOptions::new().read(true).append(true).open(&self.path)?;
         file.lock()?;
-        
+
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)?;
-        
+
         let last_line = last_line(&contents)?;
         let last: Entry = serde_json::from_slice(last_line)
             .map_err(|e| Error::JournalCorrupt(format!("last entry does not parse: {e}")))?;
-        
+
         entry.seq = last.seq.checked_add(1).ok_or_else(|| Error::JournalCorrupt("seq overflow".into()))?;
         entry.prev = Some(self.algorithm.prefixed_digest(last_line)?);
-        
+        entry.log_version = LOG_VERSION;
+
         let mut line = serde_json::to_vec(&entry)?;
         line.push(b'\n');
         file.write_all(&line)?;
@@ -177,8 +186,13 @@ impl Journal {
         Ok(entry)
     }
 
-    pub fn verify(&self) -> Result<()> {
-        Ok(())
+    pub fn verify(&self) -> Result<Verification> {
+        let mut file = OpenOptions::new().read(true).open(&self.path)?;
+        file.lock_shared()?;
+
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents)?;
+        verify_bytes(&contents, self.algorithm)
     }
 }
 
@@ -189,4 +203,78 @@ fn last_line(contents: &[u8]) -> Result<&[u8]> {
     ))?;
     let start = body.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
     Ok(&body[start..])
+}
+
+fn verify_bytes(contents: &[u8], head_algorithm: HashAlgorithm) -> Result<Verification> {
+    let broken = |line: u64, seq: Option<u64>, reason: String| {
+        Ok(Verification::Broken { line, seq, reason })
+    };
+
+    let Some(body) = contents.strip_suffix(b"\n") else {
+        return if contents.is_empty() {
+            broken(1, None, "journal is empty (missing init entry)".into())
+        } else {
+            let line = contents.iter().filter(|&&b| b == b'\n').count() as u64 + 1;
+            broken(line, None, "last entry is incomplete (no trailing newline)".into())
+        }
+    };
+
+    let mut prev: Option<(&[u8], u64)> = None;
+    let mut line_no = 0;
+
+    for line in body.split(|&b| b == b'\n') {
+        line_no += 1;
+
+        let entry: Entry = match serde_json::from_slice(line) {
+            Ok(entry) => entry,
+            Err(e) => return broken(line_no, None, format!("entry does not parse: {e}"))
+        };
+        let seq = Some(entry.seq);
+
+        if entry.log_version != LOG_VERSION {
+            return broken(line_no, seq, format!("unsupported log version: {}", entry.log_version));
+        };
+
+        match prev {
+            None => {
+                if !matches!(entry.kind, EntryKind::Init { .. }) {
+                    return broken(line_no, seq, format!("first entry must be init, found {}", entry.kind.name()));
+                }
+                if entry.seq != 0 {
+                    return broken(line_no, seq, format!("first entry must have seq 0, found {}", entry.seq));
+                }
+                if entry.prev.is_some() {
+                    return broken(line_no, seq, "first entry must not have a prev".into());
+                }
+            },
+            Some((prev_line, prev_seq)) => {
+                if matches!(entry.kind, EntryKind::Init { .. }) {
+                    return broken(line_no, seq, "init entry after first line".into());
+                }
+                if Some(entry.seq) != prev_seq.checked_add(1) {
+                    return broken(line_no, seq, format!("expected seq {}, found {}", prev_seq.wrapping_add(1), entry.seq));
+                }
+                let Some(prev_hash) = &entry.prev else {
+                    return broken(line_no, seq, "missing prev".into());
+                };
+                let Some((name, _)) = prev_hash.split_once(':') else {
+                    return broken(line_no, seq, format!("prev has no algorithm prefix: {prev_hash}"));
+                };
+                let Ok(algorithm) = name.parse::<HashAlgorithm>() else {
+                    return broken(line_no, seq, format!("unsupported hash algorithm in prev: {name}"));
+                };
+                if *prev_hash != algorithm.prefixed_digest(prev_line)? {
+                    return broken(line_no, seq, format!("prev does not match hash of line {}", line_no - 1));
+                }
+            }
+        }
+
+        prev = Some((line, entry.seq))
+    };
+
+    let (last_line, _) = prev.expect("loop ran at least once");
+    Ok(Verification::Valid {
+        entries: line_no,
+        head: head_algorithm.prefixed_digest(last_line)?,
+    })
 }
