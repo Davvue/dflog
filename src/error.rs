@@ -35,6 +35,9 @@ pub enum Error {
     #[error("could not serialize journal: {0}")]
     JournalSerialize(#[from] serde_json::Error),
 
+    #[error("journal is corrupt: {0}")]
+    JournalCorrupt(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

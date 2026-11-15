@@ -12,11 +12,22 @@ pub enum HashAlgorithm {
 }
 
 impl HashAlgorithm {
+    pub fn name(self) -> &'static str {
+        match self {
+            HashAlgorithm::Sha256 => "sha256",
+            HashAlgorithm::Sha512 => "sha512",
+        }
+    }
+
     pub fn digest<R: Read>(self, reader: R) -> std::io::Result<String> {
         match self {
             HashAlgorithm::Sha256 => hash_with::<Sha256, R>(reader),
             HashAlgorithm::Sha512 => hash_with::<Sha512, R>(reader),
         }
+    }
+
+    pub fn prefixed_digest<R: Read>(self, reader: R) -> std::io::Result<String> {
+        Ok(format!("{}:{}", self.name(), self.digest(reader)?))
     }
 }
 

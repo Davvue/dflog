@@ -1,4 +1,5 @@
-use std::io::Write;
+use std::fs::OpenOptions;
+use std::io::{Read, Write};
 use serde::{Deserialize, Serialize};
 use crate::config::Config;
 use crate::error::{Error, Result};
@@ -154,11 +155,38 @@ impl Journal {
         })
     }
 
-    pub fn append(&self, entry: Entry) -> Result<()> {
-        Ok(())
+    pub fn append(&self, mut entry: Entry) -> Result<Entry> {
+        let mut file = OpenOptions::new().read(true).append(true).open(&self.path)?;
+        file.lock()?;
+        
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents)?;
+        
+        let last_line = last_line(&contents)?;
+        let last: Entry = serde_json::from_slice(last_line)
+            .map_err(|e| Error::JournalCorrupt(format!("last entry does not parse: {e}")))?;
+        
+        entry.seq = last.seq.checked_add(1).ok_or_else(|| Error::JournalCorrupt("seq overflow".into()))?;
+        entry.prev = Some(self.algorithm.prefixed_digest(last_line)?);
+        
+        let mut line = serde_json::to_vec(&entry)?;
+        line.push(b'\n');
+        file.write_all(&line)?;
+        file.sync_all()?;
+
+        Ok(entry)
     }
 
     pub fn verify(&self) -> Result<()> {
         Ok(())
     }
+}
+
+fn last_line(contents: &[u8]) -> Result<&[u8]> {
+    let body = contents.strip_suffix(b"\n").ok_or_else(|| Error::JournalCorrupt(
+        if contents.is_empty() { "journal is empty (missing init entry)".into() }
+        else { "last entry is incomplete (no trailing newline)".into() }
+    ))?;
+    let start = body.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+    Ok(&body[start..])
 }
