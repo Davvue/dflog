@@ -12,7 +12,7 @@ pub enum HashAlgorithm {
 }
 
 impl HashAlgorithm {
-    pub fn digest<R: std::io::Read>(self, reader: R) -> std::io::Result<String> {
+    pub fn digest<R: Read>(self, reader: R) -> std::io::Result<String> {
         match self {
             HashAlgorithm::Sha256 => hash_with::<Sha256, R>(reader),
             HashAlgorithm::Sha512 => hash_with::<Sha512, R>(reader),
@@ -21,7 +21,7 @@ impl HashAlgorithm {
 }
 
 fn hash_with<D: Digest, R: Read>(mut reader: R) -> std::io::Result<String> {
-    let mut hasher = D::new();
+    let mut algo = D::new();
     let mut buf = vec![0u8; 64 * 1024];
 
     loop {
@@ -31,10 +31,10 @@ fn hash_with<D: Digest, R: Read>(mut reader: R) -> std::io::Result<String> {
             Err(e) if e.kind() == ErrorKind::Interrupted => continue,
             Err(e) => return Err(e),
         };
-        hasher.update(&buf[..n]);
+        algo.update(&buf[..n]);
     }
 
-    Ok(hasher
+    Ok(algo
         .finalize()
         .iter()
         .map(|b| format!("{b:02x}"))
