@@ -1,6 +1,6 @@
+use crate::hash::HashAlgorithm;
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
-use crate::hash::HashAlgorithm;
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -30,7 +30,7 @@ pub struct InitArgs {
     pub case_id: String,
 
     /// Hash algorithm used for this case
-    #[arg(long="hash", value_enum, default_value_t)]
+    #[arg(long = "hash", value_enum, default_value_t)]
     pub hash: HashAlgorithm,
 
     #[arg(default_value = "./")]

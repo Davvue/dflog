@@ -2,8 +2,8 @@ mod cli;
 mod commands;
 mod config;
 mod error;
-mod workspace;
 mod hash;
+mod workspace;
 
 use crate::cli::{Cli, Command};
 use crate::commands::init;

@@ -10,8 +10,8 @@ pub fn run(init_args: InitArgs) -> Result<()> {
             case_id: init_args.case_id,
         },
         hash: HashConfig {
-            algorithm: init_args.hash
-        }
+            algorithm: init_args.hash,
+        },
     };
     let ws = Workspace::create(&init_args.base_path, config)?;
 

@@ -76,8 +76,8 @@ fn config_path(root: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use crate::hash::HashAlgorithm;
     use super::*;
+    use crate::hash::HashAlgorithm;
 
     fn sample_config() -> Config {
         Config {
@@ -86,8 +86,8 @@ mod tests {
                 case_id: "2026-0001".into(),
             },
             hash: crate::config::HashConfig {
-                algorithm: HashAlgorithm::Sha512
-            }
+                algorithm: HashAlgorithm::Sha512,
+            },
         }
     }
 
