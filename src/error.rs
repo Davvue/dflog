@@ -22,6 +22,18 @@ pub enum Error {
 
     #[error("could not serialize config: {0}")]
     ConfigSerialize(#[from] toml::ser::Error),
+    
+    #[error("unexpected journal entry kind: expected {expected}, found {got}")]
+    JournalEntryKind{
+        expected: &'static str,
+        got: &'static str,
+    },
+
+    #[error("journal file missing: {0}")]
+    JournalNotFound(PathBuf),
+
+    #[error("could not serialize journal: {0}")]
+    JournalSerialize(#[from] serde_json::Error),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),
