@@ -1,8 +1,15 @@
+//! `dflog init`: create a new case workspace.
+
 use crate::cli::InitArgs;
 use crate::config::{CaseConfig, Config, HashConfig};
 use crate::error::Result;
 use crate::workspace::Workspace;
 
+/// Builds the case config from the arguments, creates the workspace at
+/// `base_path` and tells the examiner where to put case files.
+///
+/// Fails with [`crate::error::Error::AlreadyInitialized`] if `base_path`
+/// already contains a workspace.
 pub fn run(init_args: InitArgs) -> Result<()> {
     let config = Config {
         case: CaseConfig {

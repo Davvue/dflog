@@ -1,1 +1,4 @@
+//! Subcommand implementations. Each module exposes a `run` function that
+//! takes the subcommand's parsed arguments from [`crate::cli`].
+
 pub mod init;

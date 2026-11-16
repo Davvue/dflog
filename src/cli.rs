@@ -1,24 +1,39 @@
+//! Command-line definition.
+//!
+//! Note: clap turns the `///` comments on the types and fields in this module
+//! into `--help` text, so they are written for the examiner using the tool,
+//! not for developers. Use `//` for developer notes here.
+
+// Help text uses `<PATH>`-style placeholders, which rustdoc would otherwise
+// flag as unclosed HTML tags.
+#![allow(rustdoc::invalid_html_tags)]
+
 use crate::hash::HashAlgorithm;
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
+/// Logging utility for digital forensic investigation
 #[derive(Parser)]
-#[command(version, about)]
+#[command(version)]
 pub struct Cli {
     /// Run as if dflog was started in <PATH> instead of the current directory
     #[arg(short = 'C', global = true, value_name = "PATH")]
     pub chdir: Option<PathBuf>,
 
+    // The selected subcommand.
     #[command(subcommand)]
     pub command: Command,
 }
 
+// One variant per subcommand. The `///` comment on each variant is the
+// subcommand's description in `dflog --help`.
 #[derive(Subcommand)]
 pub enum Command {
     /// Create a new dflog workspace
     Init(InitArgs),
 }
 
+// Arguments of `dflog init`.
 #[derive(Args)]
 pub struct InitArgs {
     /// Name of the examiner responsible for this case
@@ -33,6 +48,7 @@ pub struct InitArgs {
     #[arg(long = "hash", value_enum, default_value_t)]
     pub hash: HashAlgorithm,
 
+    /// Directory to create the workspace in
     #[arg(default_value = "./")]
     pub base_path: PathBuf,
 }

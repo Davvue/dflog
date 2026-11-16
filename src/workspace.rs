@@ -1,15 +1,33 @@
+//! The case workspace containing a `.dflog` directory.
+//!
+//! Layout:
+//! ```text
+//! <root>/
+//! ├── .dflog/
+//! │   ├── config.toml     case config, see crate::config
+//! │   ├── journal.jsonl   hash-chained journal, see crate::journal
+//! │   └── cmd-out/        captured stdout/stderr of wrapped commands
+//! └── working/            case files the examiner works on
+//! ```
+
 use crate::config::{CONFIG_FILE, Config};
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
 
+/// Name of the directory that marks a workspace root and holds dflog's data.
 pub const DFLOG_DIR: &str = ".dflog";
+/// Directory for captured command output, inside [`DFLOG_DIR`].
 const CMD_OUT_DIR: &str = "cmd-out";
+/// Directory for case files, directly inside the workspace root.
 const WORKING_DIR: &str = "working";
 
+/// An opened workspace: where it is and the config it was loaded with.
 #[derive(Debug)]
 pub struct Workspace {
     /// Directory that contains `.dflog`.
     pub root: PathBuf,
+    /// The config loaded from (or, for a new workspace, written to)
+    /// `.dflog/config.toml`.
     pub config: Config,
 }
 
@@ -30,7 +48,9 @@ impl Workspace {
         Ok(Self { root, config })
     }
 
-    /// Creates a new workspace at `root`. Fails if one already exists there.
+    /// Creates a new workspace at `root`: the `working/` and `.dflog/cmd-out/`
+    /// directories and the config file. Fails with
+    /// [`Error::AlreadyInitialized`] if `root` already has a config.
     pub fn create(root: &Path, config: Config) -> Result<Self> {
         let config_path = config_path(root);
         if config_path.exists() {
@@ -47,23 +67,30 @@ impl Workspace {
         Ok(ws)
     }
 
+    /// `<root>/.dflog`
     pub fn dflog_dir(&self) -> PathBuf {
         self.root.join(DFLOG_DIR)
     }
 
+    /// `<root>/.dflog/config.toml`
     pub fn config_path(&self) -> PathBuf {
         config_path(&self.root)
     }
 
+    /// `<root>/.dflog/cmd-out`
     pub fn cmd_out_dir(&self) -> PathBuf {
         self.dflog_dir().join(CMD_OUT_DIR)
     }
 
+    /// `<root>/working`
     pub fn working_dir(&self) -> PathBuf {
         self.root.join(WORKING_DIR)
     }
 }
 
+/// Config path for a workspace at `root`. A free function because
+/// `Workspace::discover` and `Workspace::create` need it before a
+/// `Workspace` exists.
 fn config_path(root: &Path) -> PathBuf {
     root.join(DFLOG_DIR).join(CONFIG_FILE)
 }
