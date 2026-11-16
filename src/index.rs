@@ -4,6 +4,7 @@ use crate::journal::{Change, Digest, FileChange, FileStat};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{FileType, Metadata};
+use std::io::Write;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -144,6 +145,54 @@ impl Index {
             && old.stat == *now
             && old.stat.mtime[0] < self.taken_at
             && old.stat.ctime[0] < self.taken_at
+    }
+
+    /// Reads the index at `path`.
+    ///
+    /// Returns `Ok(None)` if there is no index file, so the caller decides
+    /// what that means. Treating it as an empty index would report every file
+    /// as created. Fails with [`Error::IndexCorrupt`] if the file does not
+    /// parse.
+    pub fn load(path: &Path) -> Result<Option<Index>> {
+        let bytes = match std::fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+        serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|source| Error::IndexCorrupt {
+                path: path.to_path_buf(),
+                source,
+            })
+    }
+
+    /// Writes the index to `path`, replacing any existing index atomically.
+    ///
+    /// The index is written to `<path>.tmp`, synced, and renamed over `path`;
+    /// then the parent directory is synced so the rename itself survives a
+    /// crash. A reader therefore sees either the old or the new index, never
+    /// a partial one. Callers must not save concurrently: both would write
+    /// the same temp file.
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(".tmp");
+        let tmp = PathBuf::from(tmp);
+
+        let bytes = serde_json::to_vec(self)?;
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        drop(file);
+
+        std::fs::rename(&tmp, path)?;
+
+        let dir = match path.parent() {
+            Some(dir) if !dir.as_os_str().is_empty() => dir,
+            _ => Path::new("."),
+        };
+        std::fs::File::open(dir)?.sync_all()?;
+        Ok(())
     }
 }
 
