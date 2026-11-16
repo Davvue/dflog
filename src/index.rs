@@ -1,8 +1,8 @@
 use crate::error::{Error, Result};
 use crate::hash::HashAlgorithm;
-use crate::journal::Digest;
+use crate::journal::{Change, Digest, FileChange, FileStat};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{FileType, Metadata};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
@@ -32,6 +32,29 @@ pub struct Stat {
     pub ctime: [i64; 2],
     pub dev: u64, // Unambiguous inode across mounts
     pub ino: u64,
+}
+
+impl IndexEntry {
+    /// What the journal records for this entry.
+    fn file_stat(&self) -> FileStat {
+        FileStat {
+            size: self.stat.size,
+            digest: self.digest.clone(),
+        }
+    }
+
+    /// Whether the content differs between `self` and `other`.
+    ///
+    /// With a hash or symlink target on both sides, those are compared and
+    /// the stat is ignored. If either side could not be read there is no
+    /// content to compare, so any difference in stat or error text counts
+    /// as a change.
+    fn content_changed(&self, other: &IndexEntry) -> bool {
+        match (&self.digest, &other.digest) {
+            (Digest::Error(_), _) | (_, Digest::Error(_)) => self != other,
+            (a, b) => a != b,
+        }
+    }
 }
 
 impl Stat {
@@ -80,6 +103,40 @@ impl Index {
         }
 
         Ok(Index { taken_at, entries })
+    }
+
+    /// Changes from `self` (the earlier snapshot) to `after`, sorted by path.
+    ///
+    /// A file only in `after` is `Created`, one only in `self` is `Deleted`,
+    /// and one in both is `Modified` if its content changed (see
+    /// [`IndexEntry::content_changed`]). Metadata-only changes such as `touch`
+    /// are not reported. Never produces `Unchanged`; that is for files named
+    /// explicitly as artifacts.
+    pub fn diff(&self, after: &Index) -> Vec<FileChange> {
+        let paths: BTreeSet<&PathBuf> = self.entries.keys().chain(after.entries.keys()).collect();
+
+        paths
+            .into_iter()
+            .filter_map(|path| {
+                let change = match (self.entries.get(path), after.entries.get(path)) {
+                    (None, Some(new)) => Change::Created {
+                        after: new.file_stat(),
+                    },
+                    (Some(old), None) => Change::Deleted {
+                        before: old.file_stat(),
+                    },
+                    (Some(old), Some(new)) if old.content_changed(new) => Change::Modified {
+                        before: old.file_stat(),
+                        after: new.file_stat(),
+                    },
+                    _ => return None,
+                };
+                Some(FileChange {
+                    path: path.clone(),
+                    change,
+                })
+            })
+            .collect()
     }
 
     fn reusable(&self, old: &IndexEntry, now: &Stat) -> bool {
