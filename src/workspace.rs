@@ -93,6 +93,11 @@ impl Workspace {
     pub fn working_dir(&self) -> PathBuf {
         self.root.join(WORKING_DIR)
     }
+
+    /// Returns the working directory relative to the workspace root
+    pub fn working_scope() -> &'static str {
+        WORKING_DIR
+    }
 }
 
 /// Config path for a workspace at `root`. A free function because

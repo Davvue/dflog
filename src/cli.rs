@@ -46,6 +46,10 @@ pub struct InitArgs {
     #[arg(long)]
     pub case_id: String,
 
+    /// Provide an initialization message
+    #[arg(short, long)]
+    pub message: Option<String>,
+
     /// Hash algorithm used for this case
     #[arg(long = "hash", value_enum, default_value_t)]
     pub hash: HashAlgorithm,

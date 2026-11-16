@@ -18,10 +18,7 @@ pub fn run() -> Result<ExitCode> {
             println!("Journal broken.");
 
             if let Some(checked_seq) = seq {
-                println!(
-                    "Line {} (seq {}): {}",
-                    line, checked_seq, reason
-                );
+                println!("Line {} (seq {}): {}", line, checked_seq, reason);
             } else {
                 println!("Line {}: {}", line, reason);
             }

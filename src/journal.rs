@@ -56,6 +56,30 @@ pub struct Entry {
     pub external_changes: Vec<FileChange>,
 }
 
+impl Entry {
+    pub fn new(
+        kind: EntryKind,
+        config: &Config,
+        message: String,
+        started_at: jiff::Timestamp,
+    ) -> Self {
+        Entry {
+            log_version: LOG_VERSION,
+            seq: 0,
+            prev: None,
+            kind,
+            examiner: config.case.examiner.clone(),
+            case_id: config.case.case_id.clone(),
+            message,
+            started_at,
+            finished_at: jiff::Timestamp::now(),
+            host: HostInfo::current(),
+            changes: vec![],
+            external_changes: vec![],
+        }
+    }
+}
+
 /// The kind of a journal entry, with its kind-specific data.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -105,6 +129,21 @@ pub struct HostInfo {
     /// Local UTC offset when the entry was written. Timestamps are stored in
     /// UTC; this only allows showing local time in reports.
     pub utc_offset_seconds: i32,
+}
+
+impl HostInfo {
+    pub fn current() -> Self {
+        let now = jiff::Timestamp::now();
+
+        HostInfo {
+            hostname: gethostname::gethostname().to_string_lossy().into(),
+            user: std::env::var("USER").unwrap_or("N/A".into()),
+            dflog_version: env!("CARGO_PKG_VERSION").into(),
+            os: std::env::consts::OS.into(),
+            arch: std::env::consts::ARCH.into(),
+            utc_offset_seconds: jiff::tz::TimeZone::system().to_offset(now).seconds(),
+        }
+    }
 }
 
 /// A change to one file. Serialized flat, e.g.
