@@ -8,6 +8,7 @@
 //! the chain. That is caught by comparing the `head` hash against a value
 //! recorded elsewhere, for example in the case notes.
 
+use std::fmt::{Display, Formatter};
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::hash::HashAlgorithm;
@@ -114,6 +115,16 @@ pub enum ExitStatus {
     Signal(i32),
     /// The process could not be started. Contains the OS error message.
     SpawnFailed(String),
+}
+
+impl Display for ExitStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+       match self {
+           ExitStatus::Exited(code) => { write!(f, "exit {}", code) }
+           ExitStatus::Signal(sig) => { write!(f, "signal {}", sig) }
+           ExitStatus::SpawnFailed(msg) => { write!(f, "spawn failed ({})", msg) }
+       }
+    }
 }
 
 /// The machine and dflog build an entry was written on.

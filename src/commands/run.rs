@@ -29,6 +29,7 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     let rel_cwd = if rel_cwd.as_os_str().is_empty() { PathBuf::from(".") } else { rel_cwd };
 
     // Check for changes since the last entry
+    eprintln!("dflog message: checking for pre-run file changes. this might take a while");
     let saved_index = Index::load(&ws.index_path())?.unwrap_or_default();
     let before = saved_index.snapshot(&ws.root, scope, alg)?;
     let external_changes = saved_index.diff(&before);
@@ -58,9 +59,13 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
             let status = execute(&path, &run_args.command, stdout_file, stderr_file)?;
             (Some(ProgramInfo { path, digest }), status)
         }
-        Err(e) => (None, ExitStatus::SpawnFailed(e.to_string())),
+        Err(e) => {
+            eprintln!("dflog error: {e}");
+            (None, ExitStatus::SpawnFailed(e.to_string()))
+        },
     };
     let exit_code = exit_code(&status);
+    eprintln!("dflog message: checking for post-run file changes. this might take a while");
 
     // Check for changes caused by the command
     let after = before.snapshot(&ws.root, scope, alg)?;
@@ -72,7 +77,7 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
         argv: run_args.command,
         program,
         cwd: rel_cwd,
-        status,
+        status: status.clone(),
         stdout: output_info(&ws, &stdout_path, alg)?,
         stderr: output_info(&ws, &stderr_path, alg)?,
     };
@@ -84,7 +89,8 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     );
     entry.changes = changes;
     entry.external_changes = external_changes;
-    journal.append(entry)?;
+    let entry = journal.append(entry)?;
+    eprintln!("dflog message: recorded as entry {} ({}, {} file changes)", entry.seq, status, entry.changes.len());
     after.save(&ws.index_path())?;
 
     Ok(exit_code)
@@ -135,12 +141,18 @@ fn execute(
 
     let mut child = match spawned {
         Ok(child) => child,
-        Err(e) => return Ok(ExitStatus::SpawnFailed(e.to_string())),
+        Err(e) => {
+            let msg = format!("{}: {e}", argv[0]);
+            eprintln!("dflog error: {msg}");
+            return Ok(ExitStatus::SpawnFailed(msg))
+        },
     };
 
     let child_out = child.stdout.take().expect("stdout is piped");
     let child_err = child.stderr.take().expect("stderr is piped");
 
+    eprintln!("dflog message: handing I/O over to provided command");
+    eprintln!("--- command I/O ---");
     let (waited, out_res, err_res) = std::thread::scope(|s| {
         let out = s.spawn(move || tee(child_out, std::io::stdout(), stdout_file));
         let err = s.spawn(move || tee(child_err, std::io::stderr(), stderr_file));
@@ -151,6 +163,7 @@ fn execute(
             err.join().expect("tee panicked"),
         )
     });
+    eprintln!("--- command I/O ended ---");
 
     for (name, res) in [("stdout", out_res), ("stderr", err_res)] {
         if let Err(e) = res {
