@@ -473,3 +473,645 @@ fn verify_bytes(contents: &[u8], head_algorithm: HashAlgorithm) -> Result<Verifi
         head: head_algorithm.prefixed_digest(last_line)?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{CaseConfig, HashConfig};
+    use std::path::PathBuf;
+
+    // ---- fixtures -------------------------------------------------------
+
+    fn config(algorithm: HashAlgorithm) -> Config {
+        Config {
+            case: CaseConfig {
+                examiner: "Jane Doe".into(),
+                case_id: "2026-0001".into(),
+            },
+            hash: HashConfig { algorithm },
+        }
+    }
+
+    fn workspace(algorithm: HashAlgorithm) -> (tempfile::TempDir, Workspace) {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = Workspace::create(tmp.path(), config(algorithm)).unwrap();
+        (tmp, ws)
+    }
+
+    fn entry(kind: EntryKind, message: &str) -> Entry {
+        Entry {
+            log_version: LOG_VERSION,
+            seq: 0,
+            prev: None,
+            kind,
+            examiner: "Jane Doe".into(),
+            case_id: "2026-0001".into(),
+            message: message.into(),
+            started_at: jiff::Timestamp::from_second(1_700_000_000).unwrap(),
+            finished_at: jiff::Timestamp::from_second(1_700_000_005).unwrap(),
+            host: HostInfo {
+                hostname: "forensic-ws".into(),
+                user: "jane".into(),
+                dflog_version: "0.1.0".into(),
+                os: "macos".into(),
+                arch: "aarch64".into(),
+                utc_offset_seconds: 3600,
+            },
+            changes: vec![],
+            external_changes: vec![],
+        }
+    }
+
+    fn init_entry(ws: &Workspace) -> Entry {
+        entry(
+            EntryKind::Init {
+                config: ws.config.clone(),
+            },
+            "open case",
+        )
+    }
+
+    fn stat(hash: &str, size: u64) -> FileStat {
+        FileStat {
+            size,
+            digest: Digest::Hash(format!("sha256:{hash}")),
+        }
+    }
+
+    /// A `run` entry that exercises every nested type, so serialization of
+    /// all of them goes through the chain.
+    fn run_entry(message: &str) -> Entry {
+        let mut e = entry(
+            EntryKind::Run {
+                command: CommandContext {
+                    argv: vec!["fls".into(), "-r".into(), "disk image.E01".into()],
+                    program: ProgramInfo {
+                        path: "/usr/local/bin/fls".into(),
+                        hash: "sha256:00ff".into(),
+                    },
+                    cwd: "working".into(),
+                    status: ExitStatus::Exited(0),
+                    stdout: CommandOutput {
+                        path: "cmd-out/1700000000-123.stdout".into(),
+                        hash: "sha256:aa".into(),
+                        size: 42,
+                    },
+                    stderr: CommandOutput {
+                        path: "cmd-out/1700000000-123.stderr".into(),
+                        hash: "sha256:bb".into(),
+                        size: 0,
+                    },
+                },
+            },
+            message,
+        );
+        e.changes = vec![
+            FileChange {
+                path: "working/out.txt".into(),
+                change: Change::Created {
+                    after: stat("01", 10),
+                },
+            },
+            FileChange {
+                path: "working/notes ü.md".into(),
+                change: Change::Modified {
+                    before: stat("02", 5),
+                    after: stat("03", 6),
+                },
+            },
+            FileChange {
+                path: "working/tmp".into(),
+                change: Change::Deleted {
+                    before: stat("04", 1),
+                },
+            },
+            FileChange {
+                path: "working/disk image.E01".into(),
+                change: Change::Unchanged {
+                    after: FileStat {
+                        size: 0,
+                        digest: Digest::Error("permission denied".into()),
+                    },
+                },
+            },
+        ];
+        e
+    }
+
+    fn record_entry(message: &str) -> Entry {
+        entry(EntryKind::Record, message)
+    }
+
+    fn journal_path(ws: &Workspace) -> PathBuf {
+        ws.dflog_dir().join(JOURNAL_FILE)
+    }
+
+    /// A workspace with a valid journal of four entries: init, run, record, run.
+    fn populated(algorithm: HashAlgorithm) -> (tempfile::TempDir, Workspace, Journal) {
+        let (tmp, ws) = workspace(algorithm);
+        let journal = Journal::create(&ws, init_entry(&ws)).unwrap();
+        journal.append(run_entry("list files")).unwrap();
+        journal.append(record_entry("exported registry by hand")).unwrap();
+        journal.append(run_entry("list again")).unwrap();
+        (tmp, ws, journal)
+    }
+
+    /// Bytes of a valid four-entry journal, for the `verify_bytes` tests.
+    fn valid_bytes() -> Vec<u8> {
+        let (_tmp, ws, _journal) = populated(HashAlgorithm::Sha256);
+        std::fs::read(journal_path(&ws)).unwrap()
+    }
+
+    /// Splits journal bytes into lines without their `\n`.
+    fn lines(bytes: &[u8]) -> Vec<Vec<u8>> {
+        bytes
+            .strip_suffix(b"\n")
+            .unwrap()
+            .split(|&b| b == b'\n')
+            .map(<[u8]>::to_vec)
+            .collect()
+    }
+
+    /// Joins lines back into journal bytes, each terminated by `\n`.
+    fn join(lines: &[Vec<u8>]) -> Vec<u8> {
+        lines
+            .iter()
+            .flat_map(|l| l.iter().copied().chain([b'\n']))
+            .collect()
+    }
+
+    /// Parses a line, applies `f`, and serializes it again.
+    fn edit(line: &[u8], f: impl FnOnce(&mut Entry)) -> Vec<u8> {
+        let mut e: Entry = serde_json::from_slice(line).unwrap();
+        f(&mut e);
+        serde_json::to_vec(&e).unwrap()
+    }
+
+    /// Applies `f` to the lines of a valid journal and verifies the result.
+    fn verify_tampered(f: impl FnOnce(&mut Vec<Vec<u8>>)) -> Verification {
+        let mut l = lines(&valid_bytes());
+        f(&mut l);
+        verify_bytes(&join(&l), HashAlgorithm::Sha256).unwrap()
+    }
+
+    #[track_caller]
+    fn assert_broken(v: Verification, line: u64, seq: Option<u64>, reason_contains: &str) {
+        match v {
+            Verification::Broken {
+                line: l,
+                seq: s,
+                reason,
+            } => {
+                assert_eq!((l, s), (line, seq), "reason: {reason}");
+                assert!(
+                    reason.contains(reason_contains),
+                    "expected reason containing {reason_contains:?}, got {reason:?}"
+                );
+            }
+            v => panic!("expected Broken at line {line}, got {v:?}"),
+        }
+    }
+
+    #[track_caller]
+    fn assert_valid(v: &Verification, entries: u64) -> &str {
+        match v {
+            Verification::Valid { entries: n, head } => {
+                assert_eq!(*n, entries);
+                head
+            }
+            v => panic!("expected Valid, got {v:?}"),
+        }
+    }
+
+    // ---- create / for_workspace / append --------------------------------
+
+    #[test]
+    fn create_append_verify_round_trip() {
+        let (_tmp, ws, journal) = populated(HashAlgorithm::Sha256);
+
+        let v = journal.verify().unwrap();
+        let head = assert_valid(&v, 4);
+
+        let bytes = std::fs::read(journal_path(&ws)).unwrap();
+        let last = lines(&bytes).pop().unwrap();
+        assert_eq!(
+            head,
+            HashAlgorithm::Sha256
+                .prefixed_digest(last.as_slice())
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn append_returns_exactly_what_is_on_disk() {
+        let (_tmp, ws) = workspace(HashAlgorithm::Sha256);
+        let journal = Journal::create(&ws, init_entry(&ws)).unwrap();
+        let written = vec![
+            journal.append(run_entry("one")).unwrap(),
+            journal.append(record_entry("two")).unwrap(),
+        ];
+
+        let on_disk: Vec<Entry> = lines(&std::fs::read(journal_path(&ws)).unwrap())
+            .iter()
+            .skip(1)
+            .map(|l| serde_json::from_slice(l).unwrap())
+            .collect();
+        assert_eq!(on_disk, written);
+    }
+
+    #[test]
+    fn append_assigns_seq_and_prev_from_previous_line() {
+        let (_tmp, ws) = workspace(HashAlgorithm::Sha256);
+        let journal = Journal::create(&ws, init_entry(&ws)).unwrap();
+
+        for expected_seq in 1..=3 {
+            let before = lines(&std::fs::read(journal_path(&ws)).unwrap());
+            let prev_line = before.last().unwrap();
+
+            let e = journal.append(record_entry("step")).unwrap();
+            assert_eq!(e.seq, expected_seq);
+            assert_eq!(
+                e.prev.as_deref(),
+                Some(
+                    HashAlgorithm::Sha256
+                        .prefixed_digest(prev_line.as_slice())
+                        .unwrap()
+                        .as_str()
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn create_overrides_caller_supplied_chain_fields() {
+        let (_tmp, ws) = workspace(HashAlgorithm::Sha256);
+        let mut init = init_entry(&ws);
+        init.seq = 99;
+        init.prev = Some("sha256:junk".into());
+        init.log_version = LOG_VERSION + 7;
+        Journal::create(&ws, init).unwrap();
+
+        let line = lines(&std::fs::read(journal_path(&ws)).unwrap()).remove(0);
+        let written: Entry = serde_json::from_slice(&line).unwrap();
+        assert_eq!(
+            (written.seq, written.prev, written.log_version),
+            (0, None, LOG_VERSION)
+        );
+    }
+
+    #[test]
+    fn append_overrides_caller_supplied_chain_fields() {
+        let (_tmp, ws) = workspace(HashAlgorithm::Sha256);
+        let journal = Journal::create(&ws, init_entry(&ws)).unwrap();
+
+        let mut e = record_entry("step");
+        e.seq = 99;
+        e.prev = Some("sha256:junk".into());
+        e.log_version = LOG_VERSION + 7;
+        let written = journal.append(e).unwrap();
+
+        assert_eq!(written.seq, 1);
+        assert_ne!(written.prev.as_deref(), Some("sha256:junk"));
+        assert_eq!(written.log_version, LOG_VERSION);
+        assert_valid(&journal.verify().unwrap(), 2);
+    }
+
+    #[test]
+    fn create_rejects_non_init_entry_and_writes_nothing() {
+        let (_tmp, ws) = workspace(HashAlgorithm::Sha256);
+        assert!(matches!(
+            Journal::create(&ws, record_entry("too early")),
+            Err(Error::JournalEntryKind {
+                expected: "init",
+                got: "record"
+            })
+        ));
+        assert!(matches!(
+            Journal::create(&ws, run_entry("too early")),
+            Err(Error::JournalEntryKind {
+                expected: "init",
+                got: "run"
+            })
+        ));
+        assert!(!journal_path(&ws).exists());
+    }
+
+    #[test]
+    fn create_never_overwrites_existing_journal() {
+        let (_tmp, ws, _journal) = populated(HashAlgorithm::Sha256);
+        let before = std::fs::read(journal_path(&ws)).unwrap();
+
+        assert!(matches!(
+            Journal::create(&ws, init_entry(&ws)),
+            Err(Error::AlreadyInitialized(_))
+        ));
+        assert_eq!(std::fs::read(journal_path(&ws)).unwrap(), before);
+    }
+
+    #[test]
+    fn for_workspace_opens_existing_journal() {
+        let (_tmp, ws) = workspace(HashAlgorithm::Sha256);
+        Journal::create(&ws, init_entry(&ws)).unwrap();
+
+        let journal = Journal::for_workspace(&ws).unwrap();
+        assert_eq!(journal.append(record_entry("later")).unwrap().seq, 1);
+        assert_valid(&journal.verify().unwrap(), 2);
+    }
+
+    #[test]
+    fn for_workspace_without_journal_fails() {
+        let (_tmp, ws) = workspace(HashAlgorithm::Sha256);
+        assert!(matches!(
+            Journal::for_workspace(&ws),
+            Err(Error::JournalNotFound(p)) if p == journal_path(&ws)
+        ));
+    }
+
+    #[test]
+    fn configured_algorithm_is_used_for_prev_and_head() {
+        let (_tmp, _ws, journal) = populated(HashAlgorithm::Sha512);
+        let e = journal.append(record_entry("step")).unwrap();
+        assert!(e.prev.unwrap().starts_with("sha512:"));
+
+        let v = journal.verify().unwrap();
+        assert!(assert_valid(&v, 5).starts_with("sha512:"));
+    }
+
+    #[test]
+    fn chain_with_mixed_algorithms_verifies() {
+        // The algorithm in the config is changed mid-case: older entries keep
+        // their sha256 prevs, newer ones use sha512, and the chain still holds.
+        let (_tmp, mut ws, _journal) = populated(HashAlgorithm::Sha256);
+        ws.config.hash.algorithm = HashAlgorithm::Sha512;
+        let journal = Journal::for_workspace(&ws).unwrap();
+        let e = journal.append(record_entry("after switch")).unwrap();
+        assert!(e.prev.unwrap().starts_with("sha512:"));
+
+        assert_valid(&journal.verify().unwrap(), 5);
+    }
+
+    fn assert_append_refused(contents: &[u8]) {
+        let (_tmp, ws) = workspace(HashAlgorithm::Sha256);
+        std::fs::write(journal_path(&ws), contents).unwrap();
+        let journal = Journal::for_workspace(&ws).unwrap();
+
+        assert!(matches!(
+            journal.append(record_entry("x")),
+            Err(Error::JournalCorrupt(_))
+        ));
+        assert_eq!(std::fs::read(journal_path(&ws)).unwrap(), contents);
+    }
+
+    #[test]
+    fn append_refuses_empty_journal() {
+        assert_append_refused(b"");
+    }
+
+    #[test]
+    fn append_refuses_incomplete_last_line() {
+        let mut bytes = valid_bytes();
+        bytes.truncate(bytes.len() - 20);
+        assert_append_refused(&bytes);
+    }
+
+    #[test]
+    fn append_refuses_unparseable_last_line() {
+        let mut bytes = valid_bytes();
+        bytes.extend_from_slice(b"{\"not\": \"an entry\"}\n");
+        assert_append_refused(&bytes);
+    }
+
+    #[test]
+    fn concurrent_appends_get_consecutive_seqs() {
+        const THREADS: usize = 8;
+        const PER_THREAD: usize = 10;
+
+        let (_tmp, ws) = workspace(HashAlgorithm::Sha256);
+        Journal::create(&ws, init_entry(&ws)).unwrap();
+
+        std::thread::scope(|s| {
+            for _ in 0..THREADS {
+                s.spawn(|| {
+                    // Each thread opens its own handle, as separate processes would.
+                    let journal = Journal::for_workspace(&ws).unwrap();
+                    for _ in 0..PER_THREAD {
+                        journal.append(record_entry("parallel")).unwrap();
+                    }
+                });
+            }
+        });
+
+        let journal = Journal::for_workspace(&ws).unwrap();
+        assert_valid(
+            &journal.verify().unwrap(),
+            1 + (THREADS * PER_THREAD) as u64,
+        );
+    }
+
+    // ---- verify_bytes: tampering and damage -----------------------------
+
+    #[test]
+    fn valid_journal_verifies() {
+        let v = verify_bytes(&valid_bytes(), HashAlgorithm::Sha256).unwrap();
+        assert_valid(&v, 4);
+    }
+
+    #[test]
+    fn head_uses_requested_algorithm() {
+        let v = verify_bytes(&valid_bytes(), HashAlgorithm::Sha512).unwrap();
+        assert!(assert_valid(&v, 4).starts_with("sha512:"));
+    }
+
+    #[test]
+    fn empty_journal_is_broken() {
+        let v = verify_bytes(b"", HashAlgorithm::Sha256).unwrap();
+        assert_broken(v, 1, None, "empty");
+    }
+
+    #[test]
+    fn missing_trailing_newline_is_broken() {
+        let mut bytes = valid_bytes();
+        bytes.pop();
+        let v = verify_bytes(&bytes, HashAlgorithm::Sha256).unwrap();
+        assert_broken(v, 4, None, "no trailing newline");
+    }
+
+    #[test]
+    fn cut_off_last_line_is_broken() {
+        let mut bytes = valid_bytes();
+        bytes.truncate(bytes.len() - 30);
+        let v = verify_bytes(&bytes, HashAlgorithm::Sha256).unwrap();
+        assert_broken(v, 4, None, "no trailing newline");
+    }
+
+    #[test]
+    fn edited_middle_entry_breaks_next_line() {
+        let v = verify_tampered(|l| l[1] = edit(&l[1], |e| e.message = "nothing to see".into()));
+        assert_broken(v, 3, Some(2), "prev does not match hash of line 2");
+    }
+
+    #[test]
+    fn single_byte_change_breaks_chain() {
+        // A change that keeps the JSON valid and the entry identical after
+        // parsing (extra whitespace) must still be detected: the chain is over
+        // raw bytes, not over parsed entries.
+        let v = verify_tampered(|l| l[1].insert(1, b' '));
+        assert_broken(v, 3, Some(2), "prev does not match");
+    }
+
+    #[test]
+    fn edited_first_entry_breaks_second_line() {
+        let v = verify_tampered(|l| l[0] = edit(&l[0], |e| e.examiner = "Mallory".into()));
+        assert_broken(v, 2, Some(1), "prev does not match hash of line 1");
+    }
+
+    #[test]
+    fn edited_last_entry_changes_head() {
+        // The chain can't detect this on its own; the head recorded elsewhere
+        // can.
+        let original = verify_bytes(&valid_bytes(), HashAlgorithm::Sha256).unwrap();
+        let tampered = verify_tampered(|l| l[3] = edit(&l[3], |e| e.message = "edited".into()));
+        assert_ne!(
+            assert_valid(&original, 4),
+            assert_valid(&tampered, 4)
+        );
+    }
+
+    #[test]
+    fn deleted_middle_entry_is_detected() {
+        let v = verify_tampered(|l| {
+            l.remove(1);
+        });
+        assert_broken(v, 2, Some(2), "expected seq 1, found 2");
+    }
+
+    #[test]
+    fn swapped_entries_are_detected() {
+        let v = verify_tampered(|l| l.swap(1, 2));
+        assert_broken(v, 2, Some(2), "expected seq 1, found 2");
+    }
+
+    #[test]
+    fn deleted_middle_entry_with_renumbered_seqs_is_detected() {
+        // An attacker who also fixes up the seq numbers still breaks the hash.
+        let v = verify_tampered(|l| {
+            l.remove(1);
+            l[1] = edit(&l[1], |e| e.seq = 1);
+            l[2] = edit(&l[2], |e| e.seq = 2);
+        });
+        assert_broken(v, 2, Some(1), "prev does not match hash of line 1");
+    }
+
+    #[test]
+    fn truncated_trailing_entries_change_head() {
+        let original = verify_bytes(&valid_bytes(), HashAlgorithm::Sha256).unwrap();
+        let truncated = verify_tampered(|l| l.truncate(2));
+        assert_ne!(
+            assert_valid(&original, 4),
+            assert_valid(&truncated, 2)
+        );
+    }
+
+    #[test]
+    fn garbage_line_is_broken() {
+        let v = verify_tampered(|l| l.push(b"not json".to_vec()));
+        assert_broken(v, 5, None, "does not parse");
+    }
+
+    #[test]
+    fn blank_line_is_broken() {
+        let v = verify_tampered(|l| l.insert(2, vec![]));
+        assert_broken(v, 3, None, "does not parse");
+    }
+
+    #[test]
+    fn crlf_line_ending_is_detected() {
+        // serde_json accepts the trailing `\r` as whitespace, so line 2 still
+        // parses. Its hash changes, so line 3 must fail.
+        let v = verify_tampered(|l| l[1].push(b'\r'));
+        assert_broken(v, 3, Some(2), "prev does not match");
+    }
+
+    #[test]
+    fn first_entry_must_be_init() {
+        let v = verify_tampered(|l| {
+            l.remove(0);
+        });
+        assert_broken(v, 1, Some(1), "first entry must be init, found run");
+    }
+
+    #[test]
+    fn first_entry_must_have_seq_zero() {
+        let v = verify_tampered(|l| l[0] = edit(&l[0], |e| e.seq = 5));
+        assert_broken(v, 1, Some(5), "first entry must have seq 0");
+    }
+
+    #[test]
+    fn first_entry_must_not_have_prev() {
+        let v = verify_tampered(|l| l[0] = edit(&l[0], |e| e.prev = Some("sha256:00".into())));
+        assert_broken(v, 1, Some(0), "must not have a prev");
+    }
+
+    #[test]
+    fn second_init_entry_is_broken() {
+        let v = verify_tampered(|l| {
+            let init = edit(&l[0], |e| e.seq = 4);
+            l.push(init);
+        });
+        assert_broken(v, 5, Some(4), "init entry after first line");
+    }
+
+    #[test]
+    fn seq_gap_is_broken() {
+        // Line 3's prev still matches line 2, so only the seq check fires.
+        let v = verify_tampered(|l| l[2] = edit(&l[2], |e| e.seq = 7));
+        assert_broken(v, 3, Some(7), "expected seq 2, found 7");
+    }
+
+    #[test]
+    fn missing_prev_is_broken() {
+        let v = verify_tampered(|l| l[2] = edit(&l[2], |e| e.prev = None));
+        assert_broken(v, 3, Some(2), "missing prev");
+    }
+
+    #[test]
+    fn prev_without_prefix_is_broken() {
+        let v = verify_tampered(|l| {
+            l[2] = edit(&l[2], |e| {
+                let p = e.prev.take().unwrap();
+                e.prev = Some(p.split_once(':').unwrap().1.to_string());
+            })
+        });
+        assert_broken(v, 3, Some(2), "no algorithm prefix");
+    }
+
+    #[test]
+    fn prev_with_unknown_algorithm_is_broken() {
+        let v = verify_tampered(|l| {
+            l[2] = edit(&l[2], |e| {
+                let p = e.prev.take().unwrap();
+                e.prev = Some(format!("md5:{}", p.split_once(':').unwrap().1));
+            })
+        });
+        assert_broken(v, 3, Some(2), "unsupported hash algorithm in prev: md5");
+    }
+
+    #[test]
+    fn prev_with_uppercase_hex_is_broken() {
+        // Hashes are compared exactly; there is one canonical form.
+        let v = verify_tampered(|l| {
+            l[2] = edit(&l[2], |e| {
+                let p = e.prev.take().unwrap();
+                let (alg, hex) = p.split_once(':').unwrap();
+                e.prev = Some(format!("{alg}:{}", hex.to_uppercase()));
+            })
+        });
+        assert_broken(v, 3, Some(2), "prev does not match");
+    }
+
+    #[test]
+    fn unsupported_log_version_is_broken() {
+        let v = verify_tampered(|l| l[1] = edit(&l[1], |e| e.log_version = LOG_VERSION + 1));
+        assert_broken(v, 2, Some(1), "unsupported log version");
+    }
+}
