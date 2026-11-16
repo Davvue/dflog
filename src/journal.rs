@@ -8,12 +8,12 @@
 //! the chain. That is caught by comparing the `head` hash against a value
 //! recorded elsewhere, for example in the case notes.
 
-use std::fmt::{Display, Formatter};
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::hash::HashAlgorithm;
 use crate::workspace::Workspace;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 
@@ -119,11 +119,17 @@ pub enum ExitStatus {
 
 impl Display for ExitStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-       match self {
-           ExitStatus::Exited(code) => { write!(f, "exit {}", code) }
-           ExitStatus::Signal(sig) => { write!(f, "signal {}", sig) }
-           ExitStatus::SpawnFailed(msg) => { write!(f, "spawn failed ({})", msg) }
-       }
+        match self {
+            ExitStatus::Exited(code) => {
+                write!(f, "exit {}", code)
+            }
+            ExitStatus::Signal(sig) => {
+                write!(f, "signal {}", sig)
+            }
+            ExitStatus::SpawnFailed(msg) => {
+                write!(f, "spawn failed ({})", msg)
+            }
+        }
     }
 }
 

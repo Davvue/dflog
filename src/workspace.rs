@@ -155,7 +155,11 @@ mod tests {
     fn broken_config_is_reported_not_skipped() {
         let tmp = tempfile::tempdir().unwrap();
         let ws = Workspace::create(tmp.path(), sample_config()).unwrap();
-        std::fs::write(config_path(&ws.root), "[case]\nexaminer = \"x\"\nbogus = 1\n").unwrap();
+        std::fs::write(
+            config_path(&ws.root),
+            "[case]\nexaminer = \"x\"\nbogus = 1\n",
+        )
+        .unwrap();
         assert!(matches!(
             Workspace::discover(tmp.path()),
             Err(Error::ConfigParse { .. })

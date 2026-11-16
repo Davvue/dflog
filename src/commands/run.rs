@@ -8,6 +8,7 @@ use crate::journal::{
     CommandContext, CommandOutput, Digest, Entry, EntryKind, ExitStatus, Journal, ProgramInfo,
 };
 use crate::workspace::Workspace;
+use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -16,7 +17,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
 pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     // Load workspace data
@@ -25,8 +25,15 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     let journal = Journal::for_workspace(&ws)?;
     let alg = ws.config.hash.algorithm;
     let scope = Path::new(Workspace::working_scope());
-    let rel_cwd = cwd.strip_prefix(&ws.root).map(Path::to_path_buf).unwrap_or(cwd.clone());
-    let rel_cwd = if rel_cwd.as_os_str().is_empty() { PathBuf::from(".") } else { rel_cwd };
+    let rel_cwd = cwd
+        .strip_prefix(&ws.root)
+        .map(Path::to_path_buf)
+        .unwrap_or(cwd.clone());
+    let rel_cwd = if rel_cwd.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        rel_cwd
+    };
 
     // Check for changes since the last entry
     eprintln!("dflog message: checking for pre-run file changes. this might take a while");
@@ -62,7 +69,7 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
         Err(e) => {
             eprintln!("dflog error: {e}");
             (None, ExitStatus::SpawnFailed(e.to_string()))
-        },
+        }
     };
     let exit_code = exit_code(&status);
     eprintln!("dflog message: checking for post-run file changes. this might take a while");
@@ -90,7 +97,12 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     entry.changes = changes;
     entry.external_changes = external_changes;
     let entry = journal.append(entry)?;
-    eprintln!("dflog message: recorded as entry {} ({}, {} file changes)", entry.seq, status, entry.changes.len());
+    eprintln!(
+        "dflog message: recorded as entry {} ({}, {} file changes)",
+        entry.seq,
+        status,
+        entry.changes.len()
+    );
     after.save(&ws.index_path())?;
 
     Ok(exit_code)
@@ -144,8 +156,8 @@ fn execute(
         Err(e) => {
             let msg = format!("{}: {e}", argv[0]);
             eprintln!("dflog error: {msg}");
-            return Ok(ExitStatus::SpawnFailed(msg))
-        },
+            return Ok(ExitStatus::SpawnFailed(msg));
+        }
     };
 
     let child_out = child.stdout.take().expect("stdout is piped");
