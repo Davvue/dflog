@@ -33,6 +33,8 @@ pub enum Command {
     Init(InitArgs),
     /// Verify the current state of the journal chain
     Verify,
+    /// Run a command and record it in the journal
+    Run(RunArgs),
 }
 
 // Arguments of `dflog init`.
@@ -57,4 +59,20 @@ pub struct InitArgs {
     /// Directory to create the workspace in
     #[arg(default_value = "./")]
     pub base_path: PathBuf,
+}
+
+// Arguments of `dflog run`
+#[derive(Args)]
+pub struct RunArgs {
+    /// Reason for running this command
+    #[arg(short, long)]
+    pub message: String,
+
+    /// File to hash and record even if not touched by the command
+    #[arg(long = "artifact", value_name = "PATH")]
+    pub artifacts: Vec<PathBuf>,
+
+    /// The command to run, after '--'
+    #[arg(last = true, required = true, value_name = "COMMAND")]
+    pub command: Vec<String>,
 }

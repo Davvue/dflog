@@ -205,7 +205,7 @@ pub struct CommandContext {
     /// The command exactly as executed, one element per argument.
     pub argv: Vec<String>,
     /// The executable `argv[0]` resolved to.
-    pub program: ProgramInfo,
+    pub program: Option<ProgramInfo>,
     /// Working directory, relative to the workspace root.
     pub cwd: std::path::PathBuf,
     pub status: ExitStatus,
@@ -230,8 +230,9 @@ pub struct CommandOutput {
 pub struct ProgramInfo {
     /// Absolute path after `PATH` lookup.
     pub path: std::path::PathBuf,
-    /// Algorithm-prefixed hash of the executable.
-    pub hash: String,
+    /// Serialized as `hash` or `error`, like in `FileStat`.
+    #[serde(flatten)]
+    pub digest: Digest,
 }
 
 /// Outcome of [`Journal::verify`].
@@ -586,10 +587,10 @@ mod tests {
             EntryKind::Run {
                 command: CommandContext {
                     argv: vec!["fls".into(), "-r".into(), "disk image.E01".into()],
-                    program: ProgramInfo {
+                    program: Some(ProgramInfo {
                         path: "/usr/local/bin/fls".into(),
-                        hash: "sha256:00ff".into(),
-                    },
+                        digest: Digest::Hash("sha256:00ff".into()),
+                    }),
                     cwd: "working".into(),
                     status: ExitStatus::Exited(0),
                     stdout: CommandOutput {
