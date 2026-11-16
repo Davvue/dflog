@@ -613,7 +613,9 @@ mod tests {
         let (tmp, ws) = workspace(algorithm);
         let journal = Journal::create(&ws, init_entry(&ws)).unwrap();
         journal.append(run_entry("list files")).unwrap();
-        journal.append(record_entry("exported registry by hand")).unwrap();
+        journal
+            .append(record_entry("exported registry by hand"))
+            .unwrap();
         journal.append(run_entry("list again")).unwrap();
         (tmp, ws, journal)
     }
@@ -973,10 +975,7 @@ mod tests {
         // can.
         let original = verify_bytes(&valid_bytes(), HashAlgorithm::Sha256).unwrap();
         let tampered = verify_tampered(|l| l[3] = edit(&l[3], |e| e.message = "edited".into()));
-        assert_ne!(
-            assert_valid(&original, 4),
-            assert_valid(&tampered, 4)
-        );
+        assert_ne!(assert_valid(&original, 4), assert_valid(&tampered, 4));
     }
 
     #[test]
@@ -1008,10 +1007,7 @@ mod tests {
     fn truncated_trailing_entries_change_head() {
         let original = verify_bytes(&valid_bytes(), HashAlgorithm::Sha256).unwrap();
         let truncated = verify_tampered(|l| l.truncate(2));
-        assert_ne!(
-            assert_valid(&original, 4),
-            assert_valid(&truncated, 2)
-        );
+        assert_ne!(assert_valid(&original, 4), assert_valid(&truncated, 2));
     }
 
     #[test]

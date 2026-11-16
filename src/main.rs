@@ -19,9 +19,9 @@ mod commands;
 mod config;
 mod error;
 mod hash;
+mod index;
 mod journal;
 mod workspace;
-mod index;
 
 use crate::cli::{Cli, Command};
 use crate::commands::init;

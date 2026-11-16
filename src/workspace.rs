@@ -13,8 +13,8 @@
 
 use crate::config::{CONFIG_FILE, Config};
 use crate::error::{Error, Result};
-use std::path::{Path, PathBuf};
 use crate::index::INDEX_FILE;
+use std::path::{Path, PathBuf};
 
 /// Name of the directory that marks a workspace root and holds dflog's data.
 pub const DFLOG_DIR: &str = ".dflog";

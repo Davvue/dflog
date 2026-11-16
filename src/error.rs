@@ -61,7 +61,10 @@ pub enum Error {
     JournalCorrupt(String),
 
     #[error("index ({path}) is corrupt: {source}")]
-    IndexCorrupt { path: PathBuf, source: serde_json::Error },
+    IndexCorrupt {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
 
     #[error("found non utf-8 path: {0}")]
     NonUtf8Path(PathBuf),
