@@ -31,6 +31,8 @@ pub struct Cli {
 pub enum Command {
     /// Create a new dflog workspace
     Init(InitArgs),
+    /// Verify the current state of the journal chain
+    Verify,
 }
 
 // Arguments of `dflog init`.

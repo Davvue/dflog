@@ -24,7 +24,7 @@ mod journal;
 mod workspace;
 
 use crate::cli::{Cli, Command};
-use crate::commands::init;
+use crate::commands::{init, verify};
 use clap::Parser;
 use std::process::ExitCode;
 
@@ -32,22 +32,20 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let args = Cli::parse();
 
-    match run(args) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("{} error: {}", env!("CARGO_PKG_NAME"), error);
-            ExitCode::FAILURE
-        }
-    }
+    run(args).unwrap_or_else(|error| {
+        eprintln!("{} error: {}", env!("CARGO_PKG_NAME"), error);
+        ExitCode::FAILURE
+    })
 }
 
 /// Applies global options (`-C`) and dispatches to the subcommand.
-fn run(args: Cli) -> error::Result<()> {
+fn run(args: Cli) -> error::Result<ExitCode> {
     if let Some(dir) = &args.chdir {
         std::env::set_current_dir(dir)?;
     }
 
     match args.command {
-        Command::Init(args) => init::run(args),
+        Command::Init(args) => init::run(args).map(|()| ExitCode::SUCCESS),
+        Command::Verify => verify::run(),
     }
 }
