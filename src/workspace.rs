@@ -74,11 +74,6 @@ impl Workspace {
         self.root.join(DFLOG_DIR)
     }
 
-    /// `<root>/.dflog/config.toml`
-    pub fn config_path(&self) -> PathBuf {
-        config_path(&self.root)
-    }
-
     /// `<root>/.dflog/cmd-out`
     pub fn cmd_out_dir(&self) -> PathBuf {
         self.dflog_dir().join(CMD_OUT_DIR)
@@ -160,7 +155,7 @@ mod tests {
     fn broken_config_is_reported_not_skipped() {
         let tmp = tempfile::tempdir().unwrap();
         let ws = Workspace::create(tmp.path(), sample_config()).unwrap();
-        std::fs::write(ws.config_path(), "[case]\nexaminer = \"x\"\nbogus = 1\n").unwrap();
+        std::fs::write(config_path(&ws.root), "[case]\nexaminer = \"x\"\nbogus = 1\n").unwrap();
         assert!(matches!(
             Workspace::discover(tmp.path()),
             Err(Error::ConfigParse { .. })
@@ -172,7 +167,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let ws = Workspace::create(tmp.path(), sample_config()).unwrap();
         std::fs::write(
-            ws.config_path(),
+            config_path(&ws.root),
             "[case]\nexaminer = \"x\"\ncase-id = \"y\"\n",
         )
         .unwrap();
