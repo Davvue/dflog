@@ -14,8 +14,12 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
 pub fn run(run_args: RunArgs) -> Result<ExitCode> {
+    // Load workspace data
     let cwd = std::env::current_dir()?.canonicalize()?;
     let ws = Workspace::discover(&cwd)?;
     let journal = Journal::for_workspace(&ws)?;
@@ -24,12 +28,18 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     let rel_cwd = cwd.strip_prefix(&ws.root).map(Path::to_path_buf).unwrap_or(cwd.clone());
     let rel_cwd = if rel_cwd.as_os_str().is_empty() { PathBuf::from(".") } else { rel_cwd };
 
-    // 1. Check for changes since the last entry
+    // Check for changes since the last entry
     let saved_index = Index::load(&ws.index_path())?.unwrap_or_default();
     let before = saved_index.snapshot(&ws.root, scope, alg)?;
     let external_changes = saved_index.diff(&before);
 
-    // 2. Create and open output files
+    // Register signal handlers
+    let interrupted = Arc::new(AtomicBool::new(false));
+    for sig in [SIGINT, SIGTERM, SIGHUP] {
+        signal_hook::flag::register(sig, Arc::clone(&interrupted))?;
+    }
+
+    // Create and open output files
     let started_at = jiff::Timestamp::now();
     let file_stem = format!(
         "{}-{}",
@@ -41,6 +51,7 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     let stdout_file = File::create_new(&stdout_path)?;
     let stderr_file = File::create_new(&stderr_path)?;
 
+    // Resolve program path and execute with specified arguments
     let (program, status) = match resolve_program(&run_args.command[0]) {
         Ok(path) => {
             let digest = digest_file(alg, &path);
@@ -51,12 +62,12 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     };
     let exit_code = exit_code(&status);
 
-    // 4. What did the command change
+    // Check for changes caused by the command
     let after = before.snapshot(&ws.root, scope, alg)?;
     let changes = before.diff(&after);
     // TODO: --artifacts paths
 
-    // 5. Log, then save index
+    // Log command run and file changes
     let command = CommandContext {
         argv: run_args.command,
         program,
