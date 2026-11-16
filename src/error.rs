@@ -51,14 +51,20 @@ pub enum Error {
     /// An entry could not be turned into JSON. Indicates a bug, not a user
     /// error. Parsing errors are reported as [`Error::JournalCorrupt`]
     /// instead.
-    #[error("could not serialize journal: {0}")]
-    JournalSerialize(#[from] serde_json::Error),
+    #[error("could not serialize to JSON: {0}")]
+    JsonSerialize(#[from] serde_json::Error),
 
     /// The journal is in a state that must not be appended to: empty, last
     /// line incomplete, or last entry unparseable. Raised by `append`;
     /// `verify` reports such problems as a result instead of an error.
     #[error("journal is corrupt: {0}")]
     JournalCorrupt(String),
+
+    #[error("index ({path}) is corrupt: {source}")]
+    IndexCorrupt { path: PathBuf, source: serde_json::Error },
+
+    #[error("found non utf-8 path: {0}")]
+    NonUtf8Path(PathBuf),
 
     /// A hash algorithm name that dflog does not support.
     #[error("unsupported hash algorithm: {0}")]

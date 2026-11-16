@@ -131,6 +131,8 @@ pub struct FileStat {
 pub enum Digest {
     /// Algorithm-prefixed hash, e.g. `"sha256:..."`.
     Hash(String),
+    /// Recorded with its target instead of being followed
+    Symlink(std::path::PathBuf),
     /// The file could not be read (e.g. permission denied). It is recorded
     /// with the error instead of being left out of the entry.
     Error(String),

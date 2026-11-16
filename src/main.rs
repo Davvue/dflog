@@ -21,6 +21,7 @@ mod error;
 mod hash;
 mod journal;
 mod workspace;
+mod index;
 
 use crate::cli::{Cli, Command};
 use crate::commands::init;

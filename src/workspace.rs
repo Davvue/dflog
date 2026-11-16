@@ -5,6 +5,7 @@
 //! <root>/
 //! ├── .dflog/
 //! │   ├── config.toml     case config, see crate::config
+//! │   ├── index.json      file index to detect changes
 //! │   ├── journal.jsonl   hash-chained journal, see crate::journal
 //! │   └── cmd-out/        captured stdout/stderr of wrapped commands
 //! └── working/            case files the examiner works on
@@ -13,6 +14,7 @@
 use crate::config::{CONFIG_FILE, Config};
 use crate::error::{Error, Result};
 use std::path::{Path, PathBuf};
+use crate::index::INDEX_FILE;
 
 /// Name of the directory that marks a workspace root and holds dflog's data.
 pub const DFLOG_DIR: &str = ".dflog";
@@ -80,6 +82,11 @@ impl Workspace {
     /// `<root>/.dflog/cmd-out`
     pub fn cmd_out_dir(&self) -> PathBuf {
         self.dflog_dir().join(CMD_OUT_DIR)
+    }
+
+    /// `<root>/.dflog/index.json`
+    pub fn index_path(&self) -> PathBuf {
+        self.dflog_dir().join(INDEX_FILE)
     }
 
     /// `<root>/working`
