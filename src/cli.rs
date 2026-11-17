@@ -31,14 +31,14 @@ pub struct Cli {
 pub enum Command {
     /// Create a new dflog workspace
     Init(InitArgs),
-    /// Verify the current state of the journal chain
-    Verify,
+    /// Print journal entries in a human-readable form
+    Journal,
     /// Run a command and record it in the journal
     Run(RunArgs),
     /// Record external changes
     Record(RecordArgs),
-    /// Print journal entries in a human-readable form
-    Journal,
+    /// Verify the current state of the journal chain
+    Verify,
 }
 
 // Arguments of `dflog init`.

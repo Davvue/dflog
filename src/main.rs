@@ -46,9 +46,9 @@ fn run(args: Cli) -> error::Result<ExitCode> {
 
     match args.command {
         Command::Init(args) => init::run(args).map(|()| ExitCode::SUCCESS),
-        Command::Verify => verify::run(),
+        Command::Journal => commands::journal::run(),
         Command::Record(args) => record::run(args),
         Command::Run(args) => run::run(args),
-        Command::Journal => commands::journal::run(),
+        Command::Verify => verify::run(),
     }
 }
