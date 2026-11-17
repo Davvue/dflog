@@ -21,10 +21,11 @@ mod error;
 mod hash;
 mod index;
 mod journal;
+mod report_renderer;
 mod workspace;
 
 use crate::cli::{Cli, Command};
-use crate::commands::{init, record, run, verify};
+use crate::commands::{export, init, record, run, verify};
 use clap::Parser;
 use std::process::ExitCode;
 
@@ -45,6 +46,7 @@ fn run(args: Cli) -> error::Result<ExitCode> {
     }
 
     match args.command {
+        Command::Export(args) => export::run(args),
         Command::Init(args) => init::run(args).map(|()| ExitCode::SUCCESS),
         Command::Journal => commands::journal::run(),
         Command::Record(args) => record::run(args),

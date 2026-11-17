@@ -29,6 +29,8 @@ pub struct Cli {
 // subcommand's description in `dflog --help`.
 #[derive(Subcommand)]
 pub enum Command {
+    /// Export a report from the current journal
+    Export(ExportArgs),
     /// Create a new dflog workspace
     Init(InitArgs),
     /// Print journal entries in a human-readable form
@@ -86,4 +88,12 @@ pub struct RecordArgs {
     /// Reason for external changes
     #[arg(short, long)]
     pub message: String,
+}
+
+#[derive(Args)]
+pub struct ExportArgs {
+    #[arg(short, long)]
+    pub format: Option<String>,
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 }
