@@ -24,7 +24,7 @@ mod journal;
 mod workspace;
 
 use crate::cli::{Cli, Command};
-use crate::commands::{init, run, verify};
+use crate::commands::{init, record, run, verify};
 use clap::Parser;
 use std::process::ExitCode;
 
@@ -47,7 +47,8 @@ fn run(args: Cli) -> error::Result<ExitCode> {
     match args.command {
         Command::Init(args) => init::run(args).map(|()| ExitCode::SUCCESS),
         Command::Verify => verify::run(),
+        Command::Record(args) => record::run(args),
         Command::Run(args) => run::run(args),
-        Command::Journal => commands::journal::run()
+        Command::Journal => commands::journal::run(),
     }
 }

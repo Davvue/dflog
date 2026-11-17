@@ -35,6 +35,8 @@ pub enum Command {
     Verify,
     /// Run a command and record it in the journal
     Run(RunArgs),
+    /// Record external changes
+    Record(RecordArgs),
     /// Print journal entries in a human-readable form
     Journal,
 }
@@ -77,4 +79,11 @@ pub struct RunArgs {
     /// The command to run, after '--'
     #[arg(last = true, required = true, value_name = "COMMAND")]
     pub command: Vec<String>,
+}
+
+#[derive(Args)]
+pub struct RecordArgs {
+    /// Reason for external changes
+    #[arg(short, long)]
+    pub message: String,
 }

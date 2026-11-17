@@ -1,7 +1,7 @@
 //! `dflog run`: execute a command and record it in the journal
 
 use crate::cli::RunArgs;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::hash::HashAlgorithm;
 use crate::index::Index;
 use crate::journal::{
@@ -37,7 +37,9 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
 
     // Check for changes since the last entry
     eprintln!("dflog message: checking for pre-run file changes. this might take a while");
-    let saved_index = Index::load(&ws.index_path())?.unwrap_or_default();
+    let index_path = ws.index_path();
+    let saved_index =
+        Index::load(&index_path)?.ok_or_else(|| Error::IndexNotFound(index_path.clone()))?;
     let before = saved_index.snapshot(&ws.root, scope, alg)?;
     let external_changes = saved_index.diff(&before);
 
@@ -103,7 +105,7 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
         status,
         entry.changes.len()
     );
-    after.save(&ws.index_path())?;
+    after.save(&index_path)?;
 
     Ok(exit_code)
 }

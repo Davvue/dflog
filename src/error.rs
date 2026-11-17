@@ -66,6 +66,10 @@ pub enum Error {
         source: serde_json::Error,
     },
 
+    /// The index file at the specified path does not exist
+    #[error("file index missing: {0}")]
+    IndexNotFound(PathBuf),
+
     #[error("found non utf-8 path: {0}")]
     NonUtf8Path(PathBuf),
 

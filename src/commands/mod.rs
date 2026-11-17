@@ -2,6 +2,7 @@
 //! takes the subcommand's parsed arguments from [`crate::cli`].
 
 pub mod init;
+pub mod journal;
+pub mod record;
 pub mod run;
 pub mod verify;
-pub mod journal;

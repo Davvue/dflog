@@ -1,7 +1,7 @@
-use std::process::ExitCode;
-use crate::journal::Journal;
 use crate::error::Result;
+use crate::journal::Journal;
 use crate::workspace::Workspace;
+use std::process::ExitCode;
 
 pub fn run() -> Result<ExitCode> {
     let cwd = std::env::current_dir()?;
@@ -12,7 +12,7 @@ pub fn run() -> Result<ExitCode> {
         match entry {
             Err(e) => {
                 eprintln!("{e}");
-            },
+            }
             Ok(entry) => {
                 println!("Journal entry {}", entry.seq);
                 println!("\tMessage: {}", entry.message);

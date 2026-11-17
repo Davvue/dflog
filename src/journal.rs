@@ -222,9 +222,15 @@ impl Display for Change {
             Change::Created { .. } => {
                 write!(f, "created")
             }
-            Change::Modified { .. } => { write!(f, "modified") }
-            Change::Deleted { .. } => { write!(f, "deleted") }
-            Change::Unchanged { .. } => { write!(f, "unchanged") }
+            Change::Modified { .. } => {
+                write!(f, "modified")
+            }
+            Change::Deleted { .. } => {
+                write!(f, "deleted")
+            }
+            Change::Unchanged { .. } => {
+                write!(f, "unchanged")
+            }
         }
     }
 }
@@ -421,15 +427,14 @@ fn parse_entries(contents: &[u8]) -> Result<Vec<Result<Entry>>> {
         return Ok(vec![]);
     }
 
-    Ok(
-        body.split(|&b| b == b'\n')
+    Ok(body
+        .split(|&b| b == b'\n')
         .enumerate()
         .map(|(i, line)| {
             serde_json::from_slice::<Entry>(line)
-                .map_err(|e| Error::JournalCorrupt(format!("line {}: {e}", i +1)))
+                .map_err(|e| Error::JournalCorrupt(format!("line {}: {e}", i + 1)))
         })
-        .collect()
-    )
+        .collect())
 }
 
 /// Returns the last line of the journal, without its trailing `\n`.
