@@ -216,6 +216,19 @@ pub enum Change {
     },
 }
 
+impl Display for Change {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Change::Created { .. } => {
+                write!(f, "created")
+            }
+            Change::Modified { .. } => { write!(f, "modified") }
+            Change::Deleted { .. } => { write!(f, "deleted") }
+            Change::Unchanged { .. } => { write!(f, "unchanged") }
+        }
+    }
+}
+
 /// Everything recorded about one wrapped command.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct CommandContext {
@@ -389,6 +402,34 @@ impl Journal {
         file.read_to_end(&mut contents)?;
         verify_bytes(&contents, self.algorithm)
     }
+
+    pub fn entries(&self) -> Result<Vec<Result<Entry>>> {
+        let mut file = OpenOptions::new().read(true).open(&self.path)?;
+        file.lock_shared()?;
+
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents)?;
+        drop(file);
+
+        parse_entries(&contents)
+    }
+}
+
+fn parse_entries(contents: &[u8]) -> Result<Vec<Result<Entry>>> {
+    let body = contents.strip_suffix(b"\n").unwrap_or(contents);
+    if body.is_empty() {
+        return Ok(vec![]);
+    }
+
+    Ok(
+        body.split(|&b| b == b'\n')
+        .enumerate()
+        .map(|(i, line)| {
+            serde_json::from_slice::<Entry>(line)
+                .map_err(|e| Error::JournalCorrupt(format!("line {}: {e}", i +1)))
+        })
+        .collect()
+    )
 }
 
 /// Returns the last line of the journal, without its trailing `\n`.

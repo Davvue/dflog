@@ -35,6 +35,8 @@ pub enum Command {
     Verify,
     /// Run a command and record it in the journal
     Run(RunArgs),
+    /// Print journal entries in a human-readable form
+    Journal,
 }
 
 // Arguments of `dflog init`.

@@ -4,3 +4,4 @@
 pub mod init;
 pub mod run;
 pub mod verify;
+pub mod journal;
