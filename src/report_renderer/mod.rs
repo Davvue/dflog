@@ -1,7 +1,11 @@
+pub mod html;
 pub mod text;
+#[cfg(test)]
+mod test_fixtures;
 
 use crate::error::{Error, Result};
 use crate::journal::{Entry, Verification};
+use crate::report_renderer::html::HtmlRenderer;
 use crate::report_renderer::text::TextRenderer;
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
@@ -13,18 +17,21 @@ use std::path::Path;
 pub enum ReportFormat {
     #[default]
     Text,
+    Html,
 }
 
 impl ReportFormat {
     pub fn renderer(&self) -> &dyn Renderer {
         match self {
             ReportFormat::Text => &TextRenderer,
+            ReportFormat::Html => &HtmlRenderer,
         }
     }
 
     pub fn extension(&self) -> &'static str {
         match self {
             ReportFormat::Text => "txt",
+            ReportFormat::Html => "html",
         }
     }
 
