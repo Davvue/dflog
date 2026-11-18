@@ -1,4 +1,5 @@
 pub mod html;
+pub mod markdown;
 #[cfg(test)]
 mod test_fixtures;
 pub mod text;
@@ -6,6 +7,7 @@ pub mod text;
 use crate::error::{Error, Result};
 use crate::journal::{Entry, Verification};
 use crate::report_renderer::html::HtmlRenderer;
+use crate::report_renderer::markdown::MarkdownRenderer;
 use crate::report_renderer::text::TextRenderer;
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
@@ -18,6 +20,7 @@ pub enum ReportFormat {
     #[default]
     Text,
     Html,
+    Markdown,
 }
 
 impl ReportFormat {
@@ -25,6 +28,7 @@ impl ReportFormat {
         match self {
             ReportFormat::Text => &TextRenderer,
             ReportFormat::Html => &HtmlRenderer,
+            ReportFormat::Markdown => &MarkdownRenderer,
         }
     }
 
@@ -32,6 +36,7 @@ impl ReportFormat {
         match self {
             ReportFormat::Text => "txt",
             ReportFormat::Html => "html",
+            ReportFormat::Markdown => "md",
         }
     }
 
