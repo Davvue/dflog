@@ -1,7 +1,7 @@
 //! `dflog init`: create a new case workspace.
 
 use crate::cli::InitArgs;
-use crate::config::{CaseConfig, Config, HashConfig};
+use crate::config::{CaseConfig, Config, HashConfig, ReportConfig};
 use crate::error::Result;
 use crate::index::Index;
 use crate::journal::{Entry, EntryKind, Journal};
@@ -22,6 +22,7 @@ pub fn run(init_args: InitArgs) -> Result<()> {
         hash: HashConfig {
             algorithm: init_args.hash,
         },
+        report: ReportConfig::default(),
     };
 
     let started_at = jiff::Timestamp::now();

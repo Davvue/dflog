@@ -48,7 +48,10 @@ impl Renderer for TextRenderer {
 
         for entry in &report.entries {
             writeln!(out)?;
-            self.render_entry(entry, out)?;
+            match entry {
+                Ok(entry) => self.render_entry(entry, out)?,
+                Err(e) => writeln!(out, "invalid entry: {}", e)?,
+            }
         }
 
         Ok(())
@@ -184,7 +187,7 @@ fn local_time(ts: jiff::Timestamp, offset_seconds: i32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{CaseConfig, Config, HashConfig};
+    use crate::config::{CaseConfig, Config, HashConfig, ReportConfig};
     use crate::hash::HashAlgorithm;
     use crate::journal::{CommandContext, Entry, ExitStatus, HostInfo, ProgramInfo};
 
@@ -234,6 +237,7 @@ mod tests {
             hash: HashConfig {
                 algorithm: HashAlgorithm::Sha256,
             },
+            report: ReportConfig::default(),
         };
         let mut run = entry(
             1,
@@ -293,7 +297,11 @@ mod tests {
             dflog_version: "0.1.0",
             verification,
             journal_hash: "sha256:journal".into(),
-            entries: vec![entry(0, EntryKind::Init { config }, "init"), run, record],
+            entries: vec![
+                Ok(entry(0, EntryKind::Init { config }, "init")),
+                Ok(run),
+                Ok(record),
+            ],
         }
     }
 

@@ -14,7 +14,7 @@ use crate::hash::HashAlgorithm;
 use crate::workspace::Workspace;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use std::fs::OpenOptions;
+use std::fs::{OpenOptions};
 use std::io::{Read, Write};
 
 /// Version of the entry format written by this build. [`Journal::create`] and
@@ -288,6 +288,12 @@ pub enum Verification {
     },
 }
 
+pub struct JournalSnapshot {
+    pub verification: Verification,
+    pub file_hash: String,
+    pub entries: Vec<Result<Entry>>,
+}
+
 /// Handle to a workspace's journal file. Holds no open file; each operation
 /// opens, locks and closes the file itself.
 pub struct Journal {
@@ -418,6 +424,19 @@ impl Journal {
         drop(file);
 
         parse_entries(&contents)
+    }
+
+    pub fn snapshot(&self) -> Result<JournalSnapshot> {
+        let mut file = OpenOptions::new().read(true).open(&self.path)?;
+        file.lock_shared()?;
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents)?;
+        drop(file);
+        Ok(JournalSnapshot {
+            verification: verify_bytes(&contents, self.algorithm)?,
+            file_hash: self.algorithm.prefixed_digest(contents.as_slice())?,
+            entries: parse_entries(&contents)?,
+        })
     }
 }
 
@@ -582,7 +601,7 @@ fn verify_bytes(contents: &[u8], head_algorithm: HashAlgorithm) -> Result<Verifi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{CaseConfig, HashConfig};
+    use crate::config::{CaseConfig, HashConfig, ReportConfig};
     use std::path::PathBuf;
 
     // ---- fixtures -------------------------------------------------------
@@ -594,6 +613,7 @@ mod tests {
                 case_id: "2026-0001".into(),
             },
             hash: HashConfig { algorithm },
+            report: ReportConfig::default(),
         }
     }
 

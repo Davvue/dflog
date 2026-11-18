@@ -77,6 +77,14 @@ pub enum Error {
     #[error("unsupported hash algorithm: {0}")]
     UnsupportedHashAlgorithm(String),
 
+    /// An export format that dflog does not support
+    #[error("unsupported export format: {0}")]
+    UnsupportedExportFormat(String),
+
+    /// The specified default name format for reports is invalid
+    #[error("invalid report name format: {0}")]
+    InvalidReportName(String),
+
     /// Any other I/O failure.
     #[error(transparent)]
     Io(#[from] std::io::Error),

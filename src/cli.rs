@@ -9,6 +9,7 @@
 #![allow(rustdoc::invalid_html_tags)]
 
 use crate::hash::HashAlgorithm;
+use crate::report_renderer::ReportFormat;
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -93,7 +94,7 @@ pub struct RecordArgs {
 #[derive(Args)]
 pub struct ExportArgs {
     #[arg(short, long)]
-    pub format: Option<String>,
+    pub format: Option<ReportFormat>,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 }

@@ -8,6 +8,7 @@
 //! │   ├── index.json      file index to detect changes
 //! │   ├── journal.jsonl   hash-chained journal, see crate::journal
 //! │   └── cmd-out/        captured stdout/stderr of wrapped commands
+//! ├── reports/            reports generated through the `export` command
 //! └── working/            case files the examiner works on
 //! ```
 
@@ -22,6 +23,7 @@ pub const DFLOG_DIR: &str = ".dflog";
 const CMD_OUT_DIR: &str = "cmd-out";
 /// Directory for case files, directly inside the workspace root.
 const WORKING_DIR: &str = "working";
+const REPORTS_DIR: &str = "reports";
 
 /// An opened workspace: where it is and the config it was loaded with.
 #[derive(Debug)]
@@ -65,6 +67,7 @@ impl Workspace {
         };
         std::fs::create_dir_all(ws.working_dir())?;
         std::fs::create_dir_all(ws.cmd_out_dir())?;
+        std::fs::create_dir_all(ws.reports_dir())?;
         ws.config.save_new(&config_path)?;
         Ok(ws)
     }
@@ -87,6 +90,11 @@ impl Workspace {
     /// `<root>/working`
     pub fn working_dir(&self) -> PathBuf {
         self.root.join(WORKING_DIR)
+    }
+
+    /// `<root>/reports`
+    pub fn reports_dir(&self) -> PathBuf {
+        self.root.join(REPORTS_DIR)
     }
 
     /// Returns the working directory relative to the workspace root
@@ -116,6 +124,7 @@ mod tests {
             hash: crate::config::HashConfig {
                 algorithm: HashAlgorithm::Sha512,
             },
+            report: crate::config::ReportConfig::default(),
         }
     }
 

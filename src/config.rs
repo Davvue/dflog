@@ -20,6 +20,9 @@ pub struct Config {
     pub case: CaseConfig,
     /// The `[hash]` table.
     pub hash: HashConfig,
+    /// The `[report]` table
+    #[serde(default)]
+    pub report: ReportConfig,
 }
 
 /// Who is responsible for the case and how it is identified.
@@ -41,6 +44,20 @@ pub struct HashConfig {
     /// Algorithm used for new hashes. Changing it later only affects new
     /// journal entries; existing hashes carry their own algorithm prefix.
     pub algorithm: HashAlgorithm,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct ReportConfig {
+    /// Default name format for new reports, excluding the file extension
+    pub name_format: String,
+}
+
+pub const DEFAULT_REPORT_NAME_FORMAT: &str = "%Y%m%dT%H%M%S%.3fZ";
+impl Default for ReportConfig {
+    fn default() -> Self {
+        Self { name_format: DEFAULT_REPORT_NAME_FORMAT.into() }
+    }
 }
 
 impl Config {
