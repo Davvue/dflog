@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crate::journal::{
-    Change, CommandOutput, Digest, EntryKind, FileChange, FileStat, Verification,
+    Change, CommandOutput, Digest, Entry, EntryKind, FileChange, FileStat, Verification,
 };
 use crate::report_renderer::{Renderer, Report};
 use std::io::Write;
@@ -47,68 +47,78 @@ impl Renderer for TextRenderer {
         writeln!(out, "--- Journal entries ---")?;
 
         for entry in &report.entries {
-            let offset = entry.host.utc_offset_seconds;
-
             writeln!(out)?;
-            writeln!(out, "Entry {}", entry.seq)?;
-            writeln!(out, "\tMessage: {}", entry.message)?;
-            writeln!(out, "\tExaminer: {}", entry.examiner)?;
-            writeln!(out, "\tStarted: {}", local_time(entry.started_at, offset))?;
-            writeln!(out, "\tFinished: {}", local_time(entry.finished_at, offset))?;
-            writeln!(
-                out,
-                "\tHost: {} (user {}, {}/{}, dflog {})",
-                entry.host.hostname,
-                entry.host.user,
-                entry.host.os,
-                entry.host.arch,
-                entry.host.dflog_version
-            )?;
-            writeln!(
-                out,
-                "\tPrevious entry hash: {}",
-                entry.prev.as_deref().unwrap_or("N/A")
-            )?;
+            self.render_entry(entry, out)?;
+        }
 
-            writeln!(out, "\tKind: {}", entry.kind.name())?;
-            match &entry.kind {
-                EntryKind::Init { config } => {
-                    writeln!(out, "\t\tExaminer: {}", config.case.examiner)?;
-                    writeln!(out, "\t\tCase ID: {}", config.case.case_id)?;
-                    writeln!(out, "\t\tHash Algorithm: {}", config.hash.algorithm.name())?;
-                }
-                EntryKind::Run { command } => {
-                    writeln!(
+        Ok(())
+    }
+}
+
+impl TextRenderer {
+    /// Writes one journal entry, without a separating blank line. Used for
+    /// each entry of a report and by `dflog journal`.
+    pub fn render_entry(&self, entry: &Entry, out: &mut dyn Write) -> Result<()> {
+        let offset = entry.host.utc_offset_seconds;
+
+        writeln!(out, "Entry {}", entry.seq)?;
+        writeln!(out, "\tMessage: {}", entry.message)?;
+        writeln!(out, "\tExaminer: {}", entry.examiner)?;
+        writeln!(out, "\tStarted: {}", local_time(entry.started_at, offset))?;
+        writeln!(out, "\tFinished: {}", local_time(entry.finished_at, offset))?;
+        writeln!(
+            out,
+            "\tHost: {} (user {}, {}/{}, dflog {})",
+            entry.host.hostname,
+            entry.host.user,
+            entry.host.os,
+            entry.host.arch,
+            entry.host.dflog_version
+        )?;
+        writeln!(
+            out,
+            "\tPrevious entry hash: {}",
+            entry.prev.as_deref().unwrap_or("N/A")
+        )?;
+
+        writeln!(out, "\tKind: {}", entry.kind.name())?;
+        match &entry.kind {
+            EntryKind::Init { config } => {
+                writeln!(out, "\t\tExaminer: {}", config.case.examiner)?;
+                writeln!(out, "\t\tCase ID: {}", config.case.case_id)?;
+                writeln!(out, "\t\tHash Algorithm: {}", config.hash.algorithm.name())?;
+            }
+            EntryKind::Run { command } => {
+                writeln!(
+                    out,
+                    "\t\tCommand Line Arguments: {}",
+                    command.argv.join(" ")
+                )?;
+                writeln!(out, "\t\tWorking Directory: {}", command.cwd.display())?;
+                match &command.program {
+                    Some(program) => writeln!(
                         out,
-                        "\t\tCommand Line Arguments: {}",
-                        command.argv.join(" ")
-                    )?;
-                    writeln!(out, "\t\tWorking Directory: {}", command.cwd.display())?;
-                    match &command.program {
-                        Some(program) => writeln!(
-                            out,
-                            "\t\tProgram: {} ({})",
-                            program.path.display(),
-                            digest(&program.digest)
-                        )?,
-                        None => writeln!(out, "\t\tProgram: N/A")?,
-                    }
-                    writeln!(out, "\t\tExit Status: {}", command.status)?;
-                    write_output(out, "Stdout", &command.stdout)?;
-                    write_output(out, "Stderr", &command.stderr)?;
+                        "\t\tProgram: {} ({})",
+                        program.path.display(),
+                        digest(&program.digest)
+                    )?,
+                    None => writeln!(out, "\t\tProgram: N/A")?,
                 }
-                EntryKind::Record => {}
+                writeln!(out, "\t\tExit Status: {}", command.status)?;
+                write_output(out, "Stdout", &command.stdout)?;
+                write_output(out, "Stderr", &command.stderr)?;
             }
+            EntryKind::Record => {}
+        }
 
-            // External changes happened before this entry started, so they
-            // come before the entry's own changes.
-            if !entry.external_changes.is_empty() {
-                write_changes(out, &entry.external_changes, "External Changes:")?;
-            }
+        // External changes happened before this entry started, so they
+        // come before the entry's own changes.
+        if !entry.external_changes.is_empty() {
+            write_changes(out, &entry.external_changes, "External Changes:")?;
+        }
 
-            if !entry.changes.is_empty() {
-                write_changes(out, &entry.changes, "Changes:")?;
-            }
+        if !entry.changes.is_empty() {
+            write_changes(out, &entry.changes, "Changes:")?;
         }
 
         Ok(())

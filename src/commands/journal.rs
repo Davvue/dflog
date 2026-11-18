@@ -1,6 +1,8 @@
 use crate::error::Result;
 use crate::journal::Journal;
+use crate::report_renderer::text::TextRenderer;
 use crate::workspace::Workspace;
+use std::io::Write;
 use std::process::ExitCode;
 
 pub fn run() -> Result<ExitCode> {
@@ -8,25 +10,19 @@ pub fn run() -> Result<ExitCode> {
     let ws = Workspace::discover(&cwd)?;
     let journal = Journal::for_workspace(&ws)?;
 
-    for entry in journal.entries()? {
+    let renderer = TextRenderer;
+    let mut out = std::io::stdout().lock();
+
+    for (i, entry) in journal.entries()?.into_iter().enumerate() {
+        if i > 0 {
+            writeln!(out)?;
+        }
         match entry {
             Err(e) => {
+                out.flush()?;
                 eprintln!("{e}");
             }
-            Ok(entry) => {
-                println!("Journal entry {}", entry.seq);
-                println!("\tMessage: {}", entry.message);
-                println!("\tKind: {}", entry.kind.name());
-
-                if !entry.changes.is_empty() {
-                    println!("\tChanges:");
-
-                    for change in entry.changes {
-                        println!("\t\t{}: {}", change.path.display(), change.change);
-                    }
-                }
-                println!();
-            }
+            Ok(entry) => renderer.render_entry(&entry, &mut out)?,
         }
     }
 
