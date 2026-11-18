@@ -56,7 +56,9 @@ pub struct ReportConfig {
 pub const DEFAULT_REPORT_NAME_FORMAT: &str = "%Y%m%dT%H%M%S%.3fZ";
 impl Default for ReportConfig {
     fn default() -> Self {
-        Self { name_format: DEFAULT_REPORT_NAME_FORMAT.into() }
+        Self {
+            name_format: DEFAULT_REPORT_NAME_FORMAT.into(),
+        }
     }
 }
 

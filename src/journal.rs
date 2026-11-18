@@ -14,7 +14,7 @@ use crate::hash::HashAlgorithm;
 use crate::workspace::Workspace;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use std::fs::{OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
 
 /// Version of the entry format written by this build. [`Journal::create`] and

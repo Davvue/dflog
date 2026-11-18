@@ -32,7 +32,7 @@ pub fn run(args: ExportArgs) -> Result<ExitCode> {
                 format.extension()
             );
             if Path::new(&name).file_name() != Some(name.as_ref()) {
-                return Err(Error::InvalidReportName(name))
+                return Err(Error::InvalidReportName(name));
             }
 
             (ws.reports_dir().join(name), format)

@@ -6,8 +6,7 @@ use crate::report_renderer::text::TextRenderer;
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use std::path::{Path};
-use std::str::FromStr;
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ValueEnum)]
 #[serde(rename_all = "kebab-case")]
@@ -30,7 +29,10 @@ impl ReportFormat {
     }
 
     pub fn from_extension(path: &Path) -> Result<Self> {
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or_default();
         Self::value_variants()
             .iter()
             .copied()
