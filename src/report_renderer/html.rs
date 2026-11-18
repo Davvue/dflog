@@ -59,7 +59,10 @@ impl Renderer for HtmlRenderer {
                 )?;
             }
             Verification::Broken { line, seq, reason } => {
-                writeln!(out, "<section class=\"verification broken\" role=\"alert\">")?;
+                writeln!(
+                    out,
+                    "<section class=\"verification broken\" role=\"alert\">"
+                )?;
                 writeln!(
                     out,
                     "<strong>Journal verification failed</strong> at line {} (sequence {}): {}",
@@ -143,34 +146,41 @@ impl HtmlRenderer {
             None => row(out, "Previous entry hash", "N/A")?,
         }
 
+        writeln!(out, "</dl>")?;
+
+        // Same grouping as the text report: entry details, then the
+        // kind-specific details, then each list of changes.
         match &entry.kind {
             EntryKind::Init { config } => {
-                row(out, "Case examiner", &config.case.examiner)?;
+                group_start(out, "Case configuration")?;
+                writeln!(out, "<dl class=\"nested\">")?;
+                row(out, "Examiner", &config.case.examiner)?;
                 row(out, "Case ID", &config.case.case_id)?;
                 row(out, "Hash algorithm", config.hash.algorithm.name())?;
+                writeln!(out, "</dl>")?;
+                group_end(out)?;
             }
             EntryKind::Run { command } => {
+                group_start(out, "Command")?;
+                writeln!(out, "<dl class=\"nested\">")?;
                 row_code(out, "Command line", command.argv.join(" "))?;
                 row_code(out, "Working directory", command.cwd.display())?;
                 match &command.program {
                     Some(program) => row_code(
                         out,
                         "Program",
-                        format_args!(
-                            "{} ({})",
-                            program.path.display(),
-                            digest(&program.digest)
-                        ),
+                        format_args!("{} ({})", program.path.display(), digest(&program.digest)),
                     )?,
                     None => row(out, "Program", "N/A")?,
                 }
                 row(out, "Exit status", &command.status)?;
                 output_row(out, "Stdout", &command.stdout)?;
                 output_row(out, "Stderr", &command.stderr)?;
+                writeln!(out, "</dl>")?;
+                group_end(out)?;
             }
             EntryKind::Record => {}
         }
-        writeln!(out, "</dl>")?;
 
         // External changes happened before this entry started, so they
         // come before the entry's own changes.
@@ -186,6 +196,18 @@ impl HtmlRenderer {
     }
 }
 
+/// Opens a titled group inside an entry, set off by a divider line.
+fn group_start(out: &mut dyn Write, title: &str) -> Result<()> {
+    writeln!(out, "<section class=\"group\">")?;
+    writeln!(out, "<h4>{}</h4>", title)?;
+    Ok(())
+}
+
+fn group_end(out: &mut dyn Write) -> Result<()> {
+    writeln!(out, "</section>")?;
+    Ok(())
+}
+
 /// `<dt>label</dt><dd>value</dd>`, with `value` escaped.
 fn row(out: &mut dyn Write, label: &str, value: impl Display) -> Result<()> {
     writeln!(out, "<dt>{}</dt><dd>{}</dd>", label, esc(value))?;
@@ -194,7 +216,12 @@ fn row(out: &mut dyn Write, label: &str, value: impl Display) -> Result<()> {
 
 /// Like [`row`], but shows the value as code (hashes, paths, argv).
 fn row_code(out: &mut dyn Write, label: &str, value: impl Display) -> Result<()> {
-    writeln!(out, "<dt>{}</dt><dd><code>{}</code></dd>", label, esc(value))?;
+    writeln!(
+        out,
+        "<dt>{}</dt><dd><code>{}</code></dd>",
+        label,
+        esc(value)
+    )?;
     Ok(())
 }
 
@@ -211,7 +238,7 @@ fn output_row(out: &mut dyn Write, name: &str, output: &CommandOutput) -> Result
 }
 
 fn changes_table(out: &mut dyn Write, title: &str, changes: &[FileChange]) -> Result<()> {
-    writeln!(out, "<h4>{}</h4>", title)?;
+    group_start(out, title)?;
     writeln!(out, "<div class=\"table-wrap\"><table>")?;
     writeln!(
         out,
@@ -237,7 +264,7 @@ fn changes_table(out: &mut dyn Write, title: &str, changes: &[FileChange]) -> Re
     }
     writeln!(out, "</tbody>")?;
     writeln!(out, "</table></div>")?;
-    Ok(())
+    group_end(out)
 }
 
 /// Size and digest of one side of a change, or a dash if that side does
@@ -325,7 +352,12 @@ main { max-width: 64rem; margin: 0 auto; padding: 2rem 1rem; }
 h1 { margin: 0 0 1rem; font-size: 1.6rem; }
 h2 { margin: 2rem 0 1rem; font-size: 1.25rem; }
 h3 { margin: 0 0 .75rem; font-size: 1.05rem; }
-h4 { margin: 1rem 0 .5rem; font-size: .95rem; color: var(--muted); }
+h4 {
+  margin: 0 0 .5rem; font-size: .8rem; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.group { margin-top: .9rem; padding-top: .75rem; border-top: 1px solid var(--border); }
+dl.nested { padding-left: 1rem; }
 code {
   font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   overflow-wrap: anywhere;
@@ -433,6 +465,18 @@ mod tests {
         ));
         assert!(html.contains("<tr class=\"unchanged\"><td><code>disk.img</code></td>"));
         assert!(html.contains("<code>not hashed: permission denied</code>"));
+
+        // Grouped like the text report: entry details, kind details, changes.
+        let run = &html[html.find("id=\"entry-1\"").unwrap()..html.find("id=\"entry-2\"").unwrap()];
+        let details = run.find("<dt>Previous entry hash</dt>").unwrap();
+        let command = run
+            .find("<section class=\"group\">\n<h4>Command</h4>")
+            .unwrap();
+        let changes = run
+            .find("<section class=\"group\">\n<h4>Changes</h4>")
+            .unwrap();
+        assert!(details < command && command < changes);
+        assert!(html.contains("<h4>Case configuration</h4>"));
 
         // External changes come before the entry's own changes.
         let record = html.find("id=\"entry-2\"").unwrap();

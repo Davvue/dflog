@@ -1,7 +1,7 @@
 pub mod html;
-pub mod text;
 #[cfg(test)]
 mod test_fixtures;
+pub mod text;
 
 use crate::error::{Error, Result};
 use crate::journal::{Entry, Verification};
