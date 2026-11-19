@@ -77,10 +77,6 @@ pub struct RunArgs {
     #[arg(short, long)]
     pub message: String,
 
-    /// File to hash and record even if not touched by the command
-    #[arg(long = "artifact", value_name = "PATH")]
-    pub artifacts: Vec<PathBuf>,
-
     /// The command to run, after '--'
     #[arg(last = true, required = true, value_name = "COMMAND")]
     pub command: Vec<String>,

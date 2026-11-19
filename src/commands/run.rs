@@ -84,7 +84,6 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     // Check for changes caused by the command
     let after = before.snapshot(&ws.root, scope, alg)?;
     let changes = before.diff(&after);
-    // TODO: --artifacts paths
 
     // Log command run and file changes
     let command = CommandContext {
