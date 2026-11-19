@@ -1,3 +1,4 @@
+mod format;
 pub mod html;
 pub mod markdown;
 #[cfg(test)]

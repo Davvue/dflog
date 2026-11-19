@@ -23,6 +23,7 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     let cwd = std::env::current_dir()?.canonicalize()?;
     let ws = Workspace::discover(&cwd)?;
     let journal = Journal::for_workspace(&ws)?;
+    journal.check_appendable()?;
     let alg = ws.config.hash.algorithm;
     let scope = Path::new(Workspace::working_scope());
     let rel_cwd = cwd
@@ -48,6 +49,10 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     for sig in [SIGINT, SIGTERM, SIGHUP] {
         signal_hook::flag::register(sig, Arc::clone(&interrupted))?;
     }
+
+    // Check again whether the journal can be appended,
+    // since the file snapshot may have taken a while
+    journal.check_appendable()?;
 
     // Create and open output files
     let started_at = jiff::Timestamp::now();

@@ -12,12 +12,14 @@
 //! - [`config`]: the per-case `config.toml`
 //! - [`journal`]: the hash-chained journal of entries
 //! - [`hash`]: hash algorithms and streaming file hashing
+//! - [`escape`]: escaping untrusted text for terminals and plain-text files
 //! - [`error`]: the crate-wide error type
 
 mod cli;
 mod commands;
 mod config;
 mod error;
+mod escape;
 mod hash;
 mod index;
 mod journal;

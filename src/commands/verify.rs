@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::escape::esc;
 use crate::journal::{Journal, Verification};
 use crate::workspace::Workspace;
 use std::process::ExitCode;
@@ -16,6 +17,8 @@ pub fn run() -> Result<ExitCode> {
         }
         Verification::Broken { line, seq, reason } => {
             println!("Journal broken.");
+            // Parse errors can quote parts of the (untrusted) line.
+            let reason = esc(reason);
 
             if let Some(checked_seq) = seq {
                 println!("Line {} (seq {}): {}", line, checked_seq, reason);

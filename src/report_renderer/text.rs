@@ -1,7 +1,12 @@
+//! Plain-text report and the entry listing of `dflog journal`.
+//!
+//! Every value taken from the journal is untrusted and goes through
+//! [`esc`], see [`crate::escape`].
+
 use crate::error::Result;
-use crate::journal::{
-    Change, CommandOutput, Digest, Entry, EntryKind, FileChange, FileStat, Verification,
-};
+use crate::escape::esc;
+use crate::journal::{Change, CommandOutput, Entry, EntryKind, FileChange, FileStat, Verification};
+use crate::report_renderer::format::{digest, local_time};
 use crate::report_renderer::{Renderer, Report};
 use std::io::Write;
 
@@ -13,7 +18,8 @@ impl Renderer for TextRenderer {
         writeln!(
             out,
             "Report for case '{}' by examiner '{}'",
-            report.case_id, report.examiner
+            esc(&report.case_id),
+            esc(&report.examiner)
         )?;
         writeln!(
             out,
@@ -33,7 +39,7 @@ impl Renderer for TextRenderer {
                 writeln!(
                     out,
                     "Log verification failed: '{}' at line {} (sequence {})",
-                    reason,
+                    esc(reason),
                     line,
                     seq.map_or("N/A".into(), |s| s.to_string())
                 )?;
@@ -50,7 +56,7 @@ impl Renderer for TextRenderer {
             writeln!(out)?;
             match entry {
                 Ok(entry) => self.render_entry(entry, out)?,
-                Err(e) => writeln!(out, "invalid entry: {}", e)?,
+                Err(e) => writeln!(out, "invalid entry: {}", esc(e))?,
             }
         }
 
@@ -65,49 +71,52 @@ impl TextRenderer {
         let offset = entry.host.utc_offset_seconds;
 
         writeln!(out, "Entry {}", entry.seq)?;
-        writeln!(out, "\tMessage: {}", entry.message)?;
-        writeln!(out, "\tExaminer: {}", entry.examiner)?;
+        writeln!(out, "\tMessage: {}", esc(&entry.message))?;
+        writeln!(out, "\tExaminer: {}", esc(&entry.examiner))?;
         writeln!(out, "\tStarted: {}", local_time(entry.started_at, offset))?;
         writeln!(out, "\tFinished: {}", local_time(entry.finished_at, offset))?;
         writeln!(
             out,
-            "\tHost: {} (user {}, {}/{}, dflog {})",
-            entry.host.hostname,
-            entry.host.user,
-            entry.host.os,
-            entry.host.arch,
-            entry.host.dflog_version
+            "\tHost: {}",
+            esc(format_args!(
+                "{} (user {}, {}/{}, dflog {})",
+                entry.host.hostname,
+                entry.host.user,
+                entry.host.os,
+                entry.host.arch,
+                entry.host.dflog_version
+            ))
         )?;
         writeln!(
             out,
             "\tPrevious entry hash: {}",
-            entry.prev.as_deref().unwrap_or("N/A")
+            esc(entry.prev.as_deref().unwrap_or("N/A"))
         )?;
 
         writeln!(out, "\tKind: {}", entry.kind.name())?;
         match &entry.kind {
             EntryKind::Init { config } => {
-                writeln!(out, "\t\tExaminer: {}", config.case.examiner)?;
-                writeln!(out, "\t\tCase ID: {}", config.case.case_id)?;
+                writeln!(out, "\t\tExaminer: {}", esc(&config.case.examiner))?;
+                writeln!(out, "\t\tCase ID: {}", esc(&config.case.case_id))?;
                 writeln!(out, "\t\tHash Algorithm: {}", config.hash.algorithm.name())?;
             }
             EntryKind::Run { command } => {
                 writeln!(
                     out,
                     "\t\tCommand Line Arguments: {}",
-                    command.argv.join(" ")
+                    esc(command.argv.join(" "))
                 )?;
-                writeln!(out, "\t\tWorking Directory: {}", command.cwd.display())?;
+                writeln!(out, "\t\tWorking Directory: {}", esc(command.cwd.display()))?;
                 match &command.program {
                     Some(program) => writeln!(
                         out,
                         "\t\tProgram: {} ({})",
-                        program.path.display(),
-                        digest(&program.digest)
+                        esc(program.path.display()),
+                        esc(digest(&program.digest))
                     )?,
                     None => writeln!(out, "\t\tProgram: N/A")?,
                 }
-                writeln!(out, "\t\tExit Status: {}", command.status)?;
+                writeln!(out, "\t\tExit Status: {}", esc(&command.status))?;
                 write_output(out, "Stdout", &command.stdout)?;
                 write_output(out, "Stderr", &command.stderr)?;
             }
@@ -133,9 +142,9 @@ fn write_output(out: &mut dyn Write, name: &str, output: &CommandOutput) -> Resu
         out,
         "\t\t{}: {} ({} bytes, {})",
         name,
-        output.path.display(),
+        esc(output.path.display()),
         output.size,
-        output.hash
+        esc(&output.hash)
     )?;
     Ok(())
 }
@@ -144,7 +153,7 @@ fn write_changes(out: &mut dyn Write, changes: &[FileChange], title: &str) -> Re
     writeln!(out, "\t{}", title)?;
 
     for change in changes {
-        writeln!(out, "\t\t{}: {}", change.path.display(), change.change)?;
+        writeln!(out, "\t\t{}: {}", esc(change.path.display()), change.change)?;
         match &change.change {
             Change::Created { after } | Change::Unchanged { after } => {
                 writeln!(out, "\t\t\tAfter:  {}", stat(after))?;
@@ -162,32 +171,13 @@ fn write_changes(out: &mut dyn Write, changes: &[FileChange], title: &str) -> Re
 }
 
 fn stat(stat: &FileStat) -> String {
-    format!("{} bytes, {}", stat.size, digest(&stat.digest))
-}
-
-pub(super) fn digest(digest: &Digest) -> String {
-    match digest {
-        Digest::Hash(hash) => hash.clone(),
-        Digest::Symlink(target) => format!("symlink to {}", target.display()),
-        Digest::Error(msg) => format!("not hashed: {}", msg),
-    }
-}
-
-/// Formats `ts` in the local time of the host that wrote the entry. Falls
-/// back to UTC if the stored offset is out of range.
-pub(super) fn local_time(ts: jiff::Timestamp, offset_seconds: i32) -> String {
-    match jiff::tz::Offset::from_seconds(offset_seconds) {
-        Ok(offset) => ts
-            .to_zoned(jiff::tz::TimeZone::fixed(offset))
-            .strftime("%Y-%m-%d %H:%M:%S %:z")
-            .to_string(),
-        Err(_) => ts.to_string(),
-    }
+    format!("{} bytes, {}", stat.size, esc(digest(&stat.digest)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::journal::Digest;
     use crate::report_renderer::test_fixtures::sample;
 
     fn render(report: &Report) -> String {
@@ -234,5 +224,64 @@ mod tests {
         }));
         assert!(text.contains("Log verification failed: 'bad json' at line 2 (sequence N/A)"));
         assert!(text.contains("may not be valid"));
+    }
+
+    /// Values a hostile file name or a tampered journal could control must
+    /// not be able to start a new line or reach the terminal raw.
+    #[test]
+    fn journal_text_cannot_forge_lines_or_escape_sequences() {
+        let evil = "evil\n\t\tfake.txt: deleted\u{1b}[2J";
+        let mut report = sample(Verification::Broken {
+            line: 1,
+            seq: None,
+            reason: evil.into(),
+        });
+        report.case_id = evil.into();
+        report.examiner = evil.into();
+        for entry in report.entries.iter_mut().flatten() {
+            entry.message = evil.into();
+            entry.examiner = evil.into();
+            entry.host.hostname = evil.into();
+            entry.prev = Some(evil.into());
+            match &mut entry.kind {
+                EntryKind::Init { config } => {
+                    config.case.examiner = evil.into();
+                    config.case.case_id = evil.into();
+                }
+                EntryKind::Run { command } => {
+                    command.argv = vec![evil.into()];
+                    command.cwd = evil.into();
+                    command.status = crate::journal::ExitStatus::SpawnFailed(evil.into());
+                    command.stdout.path = evil.into();
+                    command.stdout.hash = evil.into();
+                    if let Some(program) = &mut command.program {
+                        program.path = evil.into();
+                        program.digest = Digest::Error(evil.into());
+                    }
+                }
+                EntryKind::Record => {}
+            }
+            for change in entry.changes.iter_mut().chain(&mut entry.external_changes) {
+                change.path = evil.into();
+                change.change = Change::Created {
+                    after: FileStat {
+                        size: 1,
+                        digest: Digest::Symlink(evil.into()),
+                    },
+                };
+            }
+        }
+
+        let text = render(&report);
+        assert!(!text.contains('\u{1b}'), "raw ESC in output:\n{text}");
+        assert!(
+            !text.contains("\nfake.txt"),
+            "forged line in output:\n{text}"
+        );
+        assert!(
+            !text.contains("\n\t\tfake.txt"),
+            "forged line in output:\n{text}"
+        );
+        assert!(text.contains("evil\\n\\t\\tfake.txt: deleted\\u{1b}[2J"));
     }
 }

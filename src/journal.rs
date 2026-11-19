@@ -381,9 +381,7 @@ impl Journal {
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)?;
 
-        let last_line = last_line(&contents)?;
-        let last: Entry = serde_json::from_slice(last_line)
-            .map_err(|e| Error::JournalCorrupt(format!("last entry does not parse: {e}")))?;
+        let (last_line, last) = last_entry(&contents)?;
 
         entry.seq = last
             .seq
@@ -398,6 +396,32 @@ impl Journal {
         file.sync_all()?;
 
         Ok(entry)
+    }
+
+    /// Checks that [`Journal::append`] would currently accept a new entry,
+    /// without writing anything.
+    ///
+    /// Call this before doing anything that must be logged, e.g. before
+    /// spawning the command in `dflog run`, so a damaged or unwritable
+    /// journal stops the step before it happens instead of leaving it
+    /// unrecorded. Opens the file for appending (so missing write permission
+    /// is caught too) and fails like `append` would: [`Error::JournalCorrupt`]
+    /// for an empty journal, an incomplete or unparseable last line.
+    ///
+    /// This is a pre-check, not a reservation: another process could still
+    /// damage the journal between this call and `append`, which then still
+    /// refuses to write.
+    pub fn check_appendable(&self) -> Result<()> {
+        let mut file = OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(&self.path)?;
+        file.lock_shared()?;
+
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents)?;
+        last_entry(&contents)?;
+        Ok(())
     }
 
     /// Checks the whole hash chain from entry 0 to the last line.
@@ -471,6 +495,16 @@ fn last_line(contents: &[u8]) -> Result<&[u8]> {
     })?;
     let start = body.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
     Ok(&body[start..])
+}
+
+/// The last line (as in [`last_line`]) and the entry it parses to. Shared by
+/// [`Journal::append`] and [`Journal::check_appendable`] so both refuse
+/// exactly the same journals.
+fn last_entry(contents: &[u8]) -> Result<(&[u8], Entry)> {
+    let line = last_line(contents)?;
+    let entry = serde_json::from_slice(line)
+        .map_err(|e| Error::JournalCorrupt(format!("last entry does not parse: {e}")))?;
+    Ok((line, entry))
 }
 
 /// The chain check behind [`Journal::verify`], kept separate from file I/O so
@@ -982,11 +1016,41 @@ mod tests {
         std::fs::write(journal_path(&ws), contents).unwrap();
         let journal = Journal::for_workspace(&ws).unwrap();
 
+        // The pre-check must refuse exactly what append refuses.
+        assert!(matches!(
+            journal.check_appendable(),
+            Err(Error::JournalCorrupt(_))
+        ));
         assert!(matches!(
             journal.append(record_entry("x")),
             Err(Error::JournalCorrupt(_))
         ));
         assert_eq!(std::fs::read(journal_path(&ws)).unwrap(), contents);
+    }
+
+    #[test]
+    fn check_appendable_accepts_valid_journal_and_writes_nothing() {
+        let (_tmp, ws, journal) = populated(HashAlgorithm::Sha256);
+        let before = std::fs::read(journal_path(&ws)).unwrap();
+
+        journal.check_appendable().unwrap();
+
+        assert_eq!(std::fs::read(journal_path(&ws)).unwrap(), before);
+    }
+
+    #[test]
+    fn check_appendable_refuses_read_only_journal() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (_tmp, ws, journal) = populated(HashAlgorithm::Sha256);
+        let path = journal_path(&ws);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+
+        // Running as root ignores file permissions; nothing to check then.
+        if std::fs::OpenOptions::new().append(true).open(&path).is_ok() {
+            return;
+        }
+        assert!(matches!(journal.check_appendable(), Err(Error::Io(_))));
     }
 
     #[test]

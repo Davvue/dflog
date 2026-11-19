@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::escape::esc;
 use crate::journal::Journal;
 use crate::report_renderer::text::TextRenderer;
 use crate::workspace::Workspace;
@@ -20,7 +21,8 @@ pub fn run() -> Result<ExitCode> {
         match entry {
             Err(e) => {
                 out.flush()?;
-                eprintln!("{e}");
+                // Parse errors can quote parts of the (untrusted) line.
+                eprintln!("{}", esc(e));
             }
             Ok(entry) => renderer.render_entry(&entry, &mut out)?,
         }

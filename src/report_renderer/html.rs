@@ -8,7 +8,7 @@
 
 use crate::error::Result;
 use crate::journal::{Change, CommandOutput, Entry, EntryKind, FileChange, FileStat, Verification};
-use crate::report_renderer::text::{digest, local_time};
+use crate::report_renderer::format::{digest, local_time};
 use crate::report_renderer::{Renderer, Report};
 use std::fmt::{self, Display, Formatter};
 use std::io::Write;
