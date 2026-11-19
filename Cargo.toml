@@ -2,6 +2,14 @@
 name = "dflog"
 version = "0.1.0"
 edition = "2024"
+# `File::lock`, used to serialize journal appends, is stable since 1.89.
+rust-version = "1.89"
+description = "Tamper-evident, hash-chained activity log for digital forensic investigations"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Davvue/dflog"
+readme = "README.md"
+keywords = ["forensics", "dfir", "audit", "chain-of-custody", "hashing"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
