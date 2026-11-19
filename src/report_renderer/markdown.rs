@@ -139,7 +139,8 @@ impl MarkdownRenderer {
                 output_row(out, "Stdout", &command.stdout)?;
                 output_row(out, "Stderr", &command.stderr)?;
             }
-            EntryKind::Record => {}
+            // No kind-specific data: their changes are listed below.
+            EntryKind::Record | EntryKind::Reindex => {}
         }
 
         // External changes happened before this entry started, so they
@@ -333,7 +334,7 @@ mod tests {
 
         // Entries are separated by rules, with a blank line before each so
         // `---` is never read as a heading underline.
-        assert_eq!(md.matches("\n\n---\n\n### ").count(), 2);
+        assert_eq!(md.matches("\n\n---\n\n### ").count(), 3);
 
         // Grouped like the text report: entry details, kind details, changes.
         let run = &md[md.find("### #1").unwrap()..md.find("### #2").unwrap()];
@@ -342,8 +343,15 @@ mod tests {
         let changes = run.find("#### Changes").unwrap();
         assert!(details < command && command < changes);
 
-        let record = &md[md.find("### #2").unwrap()..];
+        let record = &md[md.find("### #2").unwrap()..md.find("### #3").unwrap()];
         assert!(record.contains("#### External changes\n"));
+
+        let reindex = &md[md.find("### #3 · reindex · index lost\n").unwrap()..];
+        assert!(reindex.contains(
+            "#### External changes\n\n| Path | Change | Before | After |\n| --- | --- | --- | --- |\n\
+             | `lost.txt` | deleted | 7 bytes, `sha256:gone` | — |\n"
+        ));
+        assert!(!reindex.contains("#### Command"));
     }
 
     #[test]

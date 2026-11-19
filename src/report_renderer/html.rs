@@ -179,7 +179,8 @@ impl HtmlRenderer {
                 writeln!(out, "</dl>")?;
                 group_end(out)?;
             }
-            EntryKind::Record => {}
+            // No kind-specific data: their changes are listed below.
+            EntryKind::Record | EntryKind::Reindex => {}
         }
 
         // External changes happened before this entry started, so they
@@ -481,6 +482,14 @@ mod tests {
         // External changes come before the entry's own changes.
         let record = html.find("id=\"entry-2\"").unwrap();
         assert!(html[record..].contains("<h4>External changes</h4>"));
+
+        let reindex = &html[html.find("id=\"entry-3\"").unwrap()..];
+        assert!(reindex.contains("<span class=\"kind\">reindex</span> index lost</h3>"));
+        assert!(reindex.contains(
+            "<tr class=\"deleted\"><td><code>lost.txt</code></td><td>deleted</td>\
+             <td>7 bytes<br><code>sha256:gone</code></td><td>&mdash;</td></tr>"
+        ));
+        assert!(!reindex.contains("<h4>Command</h4>"));
     }
 
     #[test]

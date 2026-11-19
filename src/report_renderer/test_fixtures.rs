@@ -39,8 +39,8 @@ fn stat(size: u64, hash: &str) -> FileStat {
     }
 }
 
-/// Three entries (init, run, record) covering every change kind and a
-/// digest that could not be computed.
+/// Four entries (init, run, record, reindex), one of each kind, covering
+/// every change kind and a digest that could not be computed.
 pub fn sample(verification: Verification) -> Report {
     let config = Config {
         case: CaseConfig {
@@ -102,6 +102,13 @@ pub fn sample(verification: Verification) -> Report {
             },
         },
     }];
+    let mut reindex = entry(3, EntryKind::Reindex, "index lost");
+    reindex.external_changes = vec![FileChange {
+        path: "lost.txt".into(),
+        change: Change::Deleted {
+            before: stat(7, "sha256:gone"),
+        },
+    }];
 
     Report {
         case_id: "CASE-1".into(),
@@ -114,6 +121,7 @@ pub fn sample(verification: Verification) -> Report {
             Ok(entry(0, EntryKind::Init { config }, "init")),
             Ok(run),
             Ok(record),
+            Ok(reindex),
         ],
     }
 }

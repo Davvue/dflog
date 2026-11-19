@@ -120,7 +120,8 @@ impl TextRenderer {
                 write_output(out, "Stdout", &command.stdout)?;
                 write_output(out, "Stderr", &command.stderr)?;
             }
-            EntryKind::Record => {}
+            // No kind-specific data: their changes are listed below.
+            EntryKind::Record | EntryKind::Reindex => {}
         }
 
         // External changes happened before this entry started, so they
@@ -213,6 +214,10 @@ mod tests {
         assert!(text.contains("\t\tdisk.img: unchanged\n"));
         assert!(text.contains("\tExternal Changes:\n\t\tnotes.txt: modified\n"));
         assert!(text.contains("\t\t\tAfter:  2 bytes, not hashed: permission denied\n"));
+        assert!(text.contains("Entry 3\n\tMessage: index lost\n"));
+        assert!(text.contains(
+            "\tKind: reindex\n\tExternal Changes:\n\t\tlost.txt: deleted\n\t\t\tBefore: 7 bytes, sha256:gone\n"
+        ));
     }
 
     #[test]
@@ -259,7 +264,7 @@ mod tests {
                         program.digest = Digest::Error(evil.into());
                     }
                 }
-                EntryKind::Record => {}
+                EntryKind::Record | EntryKind::Reindex => {}
             }
             for change in entry.changes.iter_mut().chain(&mut entry.external_changes) {
                 change.path = evil.into();
