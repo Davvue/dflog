@@ -36,6 +36,7 @@ pub enum Command {
     Init(InitArgs),
     /// Print journal entries in a human-readable form
     Journal,
+    /// Recreate the file index from the recorded journal history
     Reindex,
     /// Run a command and record it in the journal
     Run(RunArgs),

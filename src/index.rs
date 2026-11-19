@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 use crate::hash::HashAlgorithm;
-use crate::journal::{Change, Digest, FileChange, FileStat};
+use crate::journal::{Change, Digest, Entry, FileChange, FileStat};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{FileType, Metadata};
@@ -215,6 +215,24 @@ impl Index {
         };
         std::fs::File::open(dir)?.sync_all()?;
         Ok(())
+    }
+
+    pub fn replay(entries: &[Entry]) -> BTreeMap<PathBuf, FileStat> {
+        let mut state = BTreeMap::new();
+
+        for entry in entries {
+            for c in entry.external_changes.iter().chain(&entry.changes) {
+                match &c.change {
+                    Change::Created { after } | Change::Modified { after, ..} => {
+                        state.insert(c.path.clone(), after.clone());
+                    }
+                    Change::Deleted { .. } => { state.remove(&c.path); }
+                    Change::Unchanged { .. } => {}
+                }
+            }
+        }
+
+        state
     }
 }
 
