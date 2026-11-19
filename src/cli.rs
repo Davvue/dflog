@@ -37,7 +37,7 @@ pub enum Command {
     /// Print journal entries in a human-readable form
     Journal,
     /// Recreate the file index from the recorded journal history
-    Reindex,
+    Reindex(ReindexArgs),
     /// Run a command and record it in the journal
     Run(RunArgs),
     /// Record external changes
@@ -99,4 +99,11 @@ pub struct ExportArgs {
     pub format: Option<ReportFormat>,
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+}
+
+#[derive(Args)]
+pub struct ReindexArgs {
+    /// Reason for rebuilding the index
+    #[arg(short, long)]
+    pub message: String,
 }

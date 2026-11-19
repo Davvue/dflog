@@ -92,6 +92,8 @@ pub enum EntryKind {
     Run { command: CommandContext },
     /// Changes the examiner made outside dflog and documented afterwards.
     Record,
+    /// Replayed journal actions to create a new file index
+    Reindex,
 }
 
 impl EntryKind {
@@ -101,6 +103,7 @@ impl EntryKind {
             Self::Init { .. } => "init",
             Self::Run { .. } => "run",
             Self::Record => "record",
+            Self::Reindex => "reindex",
         }
     }
 }

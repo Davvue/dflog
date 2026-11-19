@@ -5,6 +5,6 @@ pub mod export;
 pub mod init;
 pub mod journal;
 pub mod record;
+pub mod reindex;
 pub mod run;
 pub mod verify;
-pub mod reindex;

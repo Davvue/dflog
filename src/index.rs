@@ -121,30 +121,38 @@ impl Index {
     /// are not reported. Never produces `Unchanged`; that is for files named
     /// explicitly as artifacts.
     pub fn diff(&self, after: &Index) -> Vec<FileChange> {
-        let paths: BTreeSet<&PathBuf> = self.entries.keys().chain(after.entries.keys()).collect();
+        diff_maps(
+            &self.entries,
+            &after.entries,
+            IndexEntry::file_stat,
+            IndexEntry::file_stat,
+            IndexEntry::content_changed,
+        )
+    }
 
-        paths
-            .into_iter()
-            .filter_map(|path| {
-                let change = match (self.entries.get(path), after.entries.get(path)) {
-                    (None, Some(new)) => Change::Created {
-                        after: new.file_stat(),
-                    },
-                    (Some(old), None) => Change::Deleted {
-                        before: old.file_stat(),
-                    },
-                    (Some(old), Some(new)) if old.content_changed(new) => Change::Modified {
-                        before: old.file_stat(),
-                        after: new.file_stat(),
-                    },
-                    _ => return None,
-                };
-                Some(FileChange {
-                    path: path.clone(),
-                    change,
-                })
-            })
-            .collect()
+    /// Changes from the state the journal describes (`expected`, see
+    /// [`Index::replay`]) to what is on disk now (`actual`, a fresh
+    /// snapshot), sorted by path.
+    ///
+    /// Same rules as [`Index::diff`], but the journal keeps only size and
+    /// digest, not the full stat. So two hashes or symlink targets are
+    /// compared directly, and if either side could not be read, a different
+    /// size or error text counts as a change (see [`file_stat_changed`]).
+    ///
+    /// Hashes are compared as stored, including their algorithm prefix. If
+    /// the configured algorithm changed since a file was last journaled,
+    /// that file shows up as `Modified` even if its content is the same.
+    pub fn diff_expected(
+        expected: &BTreeMap<PathBuf, FileStat>,
+        actual: &Index,
+    ) -> Vec<FileChange> {
+        diff_maps(
+            expected,
+            &actual.entries,
+            FileStat::clone,
+            IndexEntry::file_stat,
+            |exp, act| file_stat_changed(exp, &act.file_stat()),
+        )
     }
 
     /// Whether `old`'s digest can be kept for a file whose metadata is now
@@ -223,16 +231,71 @@ impl Index {
         for entry in entries {
             for c in entry.external_changes.iter().chain(&entry.changes) {
                 match &c.change {
-                    Change::Created { after } | Change::Modified { after, ..} => {
+                    Change::Created { after } | Change::Modified { after, .. } => {
                         state.insert(c.path.clone(), after.clone());
                     }
-                    Change::Deleted { .. } => { state.remove(&c.path); }
+                    Change::Deleted { .. } => {
+                        state.remove(&c.path);
+                    }
                     Change::Unchanged { .. } => {}
                 }
             }
         }
 
         state
+    }
+}
+
+/// The path-by-path comparison behind [`Index::diff`] and
+/// [`Index::diff_expected`], which differ only in what the two maps hold.
+///
+/// A path only in `after` is `Created`, one only in `before` is `Deleted`,
+/// and one in both is `Modified` if `changed` says so. `before_stat` and
+/// `after_stat` turn each side's value into what the journal records.
+/// Iterates the union of both key sets in order, so the result is sorted by
+/// path.
+fn diff_maps<A, B>(
+    before: &BTreeMap<PathBuf, A>,
+    after: &BTreeMap<PathBuf, B>,
+    before_stat: impl Fn(&A) -> FileStat,
+    after_stat: impl Fn(&B) -> FileStat,
+    changed: impl Fn(&A, &B) -> bool,
+) -> Vec<FileChange> {
+    let paths: BTreeSet<&PathBuf> = before.keys().chain(after.keys()).collect();
+
+    paths
+        .into_iter()
+        .filter_map(|path| {
+            let change = match (before.get(path), after.get(path)) {
+                (None, Some(new)) => Change::Created {
+                    after: after_stat(new),
+                },
+                (Some(old), None) => Change::Deleted {
+                    before: before_stat(old),
+                },
+                (Some(old), Some(new)) if changed(old, new) => Change::Modified {
+                    before: before_stat(old),
+                    after: after_stat(new),
+                },
+                _ => return None,
+            };
+            Some(FileChange {
+                path: path.clone(),
+                change,
+            })
+        })
+        .collect()
+}
+
+/// [`IndexEntry::content_changed`] for the size and digest the journal keeps.
+///
+/// With a hash or symlink target on both sides, only those are compared. If
+/// either side could not be read there is no content to compare, so any
+/// difference in size or error text counts as a change.
+fn file_stat_changed(a: &FileStat, b: &FileStat) -> bool {
+    match (&a.digest, &b.digest) {
+        (Digest::Error(_), _) | (_, Digest::Error(_)) => a != b,
+        (x, y) => x != y,
     }
 }
 
@@ -548,6 +611,219 @@ mod tests {
                 .iter()
                 .all(|c| !matches!(c.change, Change::Unchanged { .. }))
         );
+    }
+
+    // ---- diff_expected (pure) -------------------------------------------
+
+    fn stat(size: u64, digest: Digest) -> FileStat {
+        FileStat { size, digest }
+    }
+
+    fn expected(entries: Vec<(&str, FileStat)>) -> BTreeMap<PathBuf, FileStat> {
+        entries
+            .into_iter()
+            .map(|(p, s)| (PathBuf::from(p), s))
+            .collect()
+    }
+
+    /// The single change for `path`, or `None` if it is not reported.
+    fn change_for<'a>(changes: &'a [FileChange], path: &str) -> Option<&'a Change> {
+        changes
+            .iter()
+            .find(|c| c.path == Path::new(path))
+            .map(|c| &c.change)
+    }
+
+    #[test]
+    fn diff_expected_of_matching_state_is_empty() {
+        let exp = expected(vec![
+            ("a", stat(1, hash("aa"))),
+            ("link", stat(4, Digest::Symlink("target".into()))),
+        ]);
+        let act = index(vec![
+            ("a", entry(1, hash("aa"))),
+            ("link", entry(4, Digest::Symlink("target".into()))),
+        ]);
+        assert!(Index::diff_expected(&exp, &act).is_empty());
+        assert!(Index::diff_expected(&BTreeMap::new(), &Index::default()).is_empty());
+    }
+
+    #[test]
+    fn diff_expected_reports_created_modified_deleted() {
+        let exp = expected(vec![
+            ("missing", stat(1, hash("d"))),
+            ("modified", stat(2, hash("m1"))),
+            ("same", stat(3, hash("s"))),
+        ]);
+        let act = index(vec![
+            ("extra", entry(4, hash("c"))),
+            ("modified", entry(5, hash("m2"))),
+            ("same", entry(3, hash("s"))),
+        ]);
+
+        assert_eq!(
+            Index::diff_expected(&exp, &act),
+            vec![
+                FileChange {
+                    path: "extra".into(),
+                    change: Change::Created {
+                        after: stat(4, hash("c")),
+                    },
+                },
+                FileChange {
+                    path: "missing".into(),
+                    change: Change::Deleted {
+                        before: stat(1, hash("d")),
+                    },
+                },
+                FileChange {
+                    path: "modified".into(),
+                    change: Change::Modified {
+                        before: stat(2, hash("m1")),
+                        after: stat(5, hash("m2")),
+                    },
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn diff_expected_ignores_stat_of_actual_side() {
+        // The journal has no mtime/inode, so a different stat on disk with
+        // the same content must not count as a change.
+        let exp = expected(vec![("f", stat(1, hash("x")))]);
+        let mut e = entry(1, hash("x"));
+        e.stat.mtime = [1_900_000_000, 7];
+        e.stat.ino = 99;
+        let act = index(vec![("f", e)]);
+        assert!(Index::diff_expected(&exp, &act).is_empty());
+    }
+
+    #[test]
+    fn diff_expected_reports_symlink_target_change_and_type_change() {
+        let exp = expected(vec![
+            ("link", stat(1, Digest::Symlink("old".into()))),
+            ("was_file", stat(1, hash("x"))),
+        ]);
+        let act = index(vec![
+            ("link", entry(1, Digest::Symlink("new".into()))),
+            ("was_file", entry(1, Digest::Symlink("x".into()))),
+        ]);
+        let changes = Index::diff_expected(&exp, &act);
+        assert!(matches!(
+            change_for(&changes, "link"),
+            Some(Change::Modified { .. })
+        ));
+        assert!(matches!(
+            change_for(&changes, "was_file"),
+            Some(Change::Modified { .. })
+        ));
+    }
+
+    #[test]
+    fn diff_expected_with_error_on_one_side_is_modified() {
+        let denied = || Digest::Error("permission denied".into());
+        let exp = expected(vec![
+            ("now_unreadable", stat(1, hash("x"))),
+            ("now_readable", stat(1, denied())),
+        ]);
+        let act = index(vec![
+            ("now_unreadable", entry(1, denied())),
+            ("now_readable", entry(1, hash("x"))),
+        ]);
+        let changes = Index::diff_expected(&exp, &act);
+        assert_eq!(changes.len(), 2);
+        assert!(
+            changes
+                .iter()
+                .all(|c| matches!(c.change, Change::Modified { .. }))
+        );
+    }
+
+    #[test]
+    fn diff_expected_with_errors_on_both_sides() {
+        let err = |s: &str| Digest::Error(s.into());
+        let exp = expected(vec![
+            ("same", stat(1, err("permission denied"))),
+            ("grew", stat(1, err("permission denied"))),
+            ("other_error", stat(1, err("permission denied"))),
+        ]);
+        let act = index(vec![
+            ("same", entry(1, err("permission denied"))),
+            ("grew", entry(2, err("permission denied"))),
+            ("other_error", entry(1, err("not a regular file: fifo"))),
+        ]);
+        let changes = Index::diff_expected(&exp, &act);
+        assert_eq!(change_for(&changes, "same"), None);
+        assert!(matches!(
+            change_for(&changes, "grew"),
+            Some(Change::Modified { .. })
+        ));
+        assert!(matches!(
+            change_for(&changes, "other_error"),
+            Some(Change::Modified { .. })
+        ));
+    }
+
+    #[test]
+    fn diff_expected_compares_algorithm_prefix() {
+        // Documented limitation: the same content hashed with another
+        // algorithm is reported as modified.
+        let exp = expected(vec![("f", stat(1, Digest::Hash("sha512:aa".into())))]);
+        let act = index(vec![("f", entry(1, Digest::Hash("sha256:aa".into())))]);
+        assert!(matches!(
+            change_for(&Index::diff_expected(&exp, &act), "f"),
+            Some(Change::Modified { .. })
+        ));
+    }
+
+    #[test]
+    fn diff_expected_after_replay_matches_snapshot_diff() {
+        // Journaling the changes of a real snapshot and replaying them must
+        // give a state that the next snapshot matches exactly.
+        let tmp = root();
+        write(tmp.path(), "a.txt", b"a");
+        write(tmp.path(), "sub/b.txt", b"b");
+        let first = first(tmp.path());
+
+        let journal_entry = |changes: Vec<FileChange>| {
+            let config = crate::config::Config {
+                case: crate::config::CaseConfig {
+                    examiner: "Jane".into(),
+                    case_id: "C1".into(),
+                },
+                hash: crate::config::HashConfig { algorithm: ALG },
+                report: crate::config::ReportConfig::default(),
+            };
+            let mut entry = Entry::new(
+                crate::journal::EntryKind::Record,
+                &config,
+                "m".into(),
+                jiff::Timestamp::now(),
+            );
+            entry.changes = changes;
+            entry
+        };
+
+        write(tmp.path(), "a.txt", b"changed");
+        fs::remove_file(tmp.path().join(SCOPE).join("sub/b.txt")).unwrap();
+        write(tmp.path(), "c.txt", b"c");
+        let second = snap(&first, tmp.path());
+        let entries = vec![
+            journal_entry(Index::default().diff(&first)),
+            journal_entry(first.diff(&second)),
+        ];
+
+        let replayed = Index::replay(&entries);
+        assert!(Index::diff_expected(&replayed, &second).is_empty());
+
+        // A change made after the last entry is found.
+        write(tmp.path(), "c.txt", b"tampered");
+        let third = snap(&second, tmp.path());
+        let changes = Index::diff_expected(&replayed, &third);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].path, key("c.txt"));
+        assert!(matches!(changes[0].change, Change::Modified { .. }));
     }
 
     // ---- snapshot: walking ----------------------------------------------

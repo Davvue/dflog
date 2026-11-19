@@ -51,7 +51,7 @@ fn run(args: Cli) -> error::Result<ExitCode> {
         Command::Export(args) => export::run(args),
         Command::Init(args) => init::run(args),
         Command::Journal => commands::journal::run(),
-        Command::Reindex => commands::reindex::run(),
+        Command::Reindex(args) => commands::reindex::run(args),
         Command::Record(args) => record::run(args),
         Command::Run(args) => run::run(args),
         Command::Verify => verify::run(),
