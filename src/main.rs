@@ -23,7 +23,9 @@ mod escape;
 mod hash;
 mod index;
 mod journal;
+mod platform;
 mod report_renderer;
+mod unix_path;
 mod workspace;
 
 use crate::cli::{Cli, Command};

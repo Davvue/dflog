@@ -1,12 +1,13 @@
 use crate::error::{Error, Result};
 use crate::hash::HashAlgorithm;
 use crate::journal::{Change, Digest, Entry, FileChange, FileStat};
+use crate::platform;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{FileType, Metadata};
 use std::io::Write;
-use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use walkdir::WalkDir;
 
 pub const INDEX_FILE: &str = "index.json";
@@ -15,6 +16,7 @@ pub const INDEX_FILE: &str = "index.json";
 pub struct Index {
     /// Unix seconds, taken *before* the walk started
     pub taken_at: i64,
+    #[serde(with = "crate::unix_path::map")]
     pub entries: BTreeMap<PathBuf, IndexEntry>, // keys relative to workspace root
 }
 
@@ -59,13 +61,35 @@ impl IndexEntry {
 }
 
 impl Stat {
-    fn from_metadata(m: &Metadata) -> Self {
+    /// The portable part of the stat, for when [`platform::stat`] fails
+    /// (only possible on Windows, where it needs a handle to the entry). Has
+    /// no ctime (mtime is used instead) and no file ID (both 0), so it must
+    /// only go with a `Digest::Error`.
+    fn fallback(m: &Metadata) -> Self {
+        let mtime = m.modified().map_or([0, 0], unix_time);
         Stat {
-            size: m.size(),
-            mtime: [m.mtime(), m.mtime_nsec()],
-            ctime: [m.ctime(), m.ctime_nsec()],
-            dev: m.dev(),
-            ino: m.ino(),
+            size: m.len(),
+            mtime,
+            ctime: mtime,
+            dev: 0,
+            ino: 0,
+        }
+    }
+}
+
+/// `t` as `[secs, nsecs]` since the Unix epoch.
+fn unix_time(t: SystemTime) -> [i64; 2] {
+    match t.duration_since(UNIX_EPOCH) {
+        Ok(d) => [d.as_secs() as i64, i64::from(d.subsec_nanos())],
+        Err(e) => {
+            let d = e.duration();
+            let nanos = i64::from(d.subsec_nanos());
+            let secs = -(d.as_secs() as i64);
+            if nanos == 0 {
+                [secs, 0]
+            } else {
+                [secs - 1, 1_000_000_000 - nanos]
+            }
         }
     }
 }
@@ -98,7 +122,17 @@ impl Index {
             }
 
             let meta = item.metadata().map_err(std::io::Error::from)?;
-            let stat = Stat::from_metadata(&meta);
+            let stat = match platform::stat(item.path(), &meta) {
+                Ok(stat) => stat,
+                Err(e) => {
+                    let entry = IndexEntry {
+                        stat: Stat::fallback(&meta),
+                        digest: Digest::Error(format!("could not stat: {e}")),
+                    };
+                    entries.insert(rel.to_path_buf(), entry);
+                    continue;
+                }
+            };
 
             let entry = match self.entries.get(rel) {
                 Some(old) if self.reusable(old, &stat, alg) => old.clone(),
@@ -221,7 +255,7 @@ impl Index {
             Some(dir) if !dir.as_os_str().is_empty() => dir,
             _ => Path::new("."),
         };
-        std::fs::File::open(dir)?.sync_all()?;
+        platform::sync_dir(dir)?;
         Ok(())
     }
 
@@ -321,7 +355,7 @@ fn unreadable_dir(root: &Path, e: walkdir::Error) -> Result<(PathBuf, IndexEntry
     }
     let meta = std::fs::symlink_metadata(&path)?;
     let entry = IndexEntry {
-        stat: Stat::from_metadata(&meta),
+        stat: platform::stat(&path, &meta).unwrap_or_else(|_| Stat::fallback(&meta)),
         digest: Digest::Error(format!("could not read directory: {e}")),
     };
     Ok((rel, entry))
@@ -342,7 +376,7 @@ fn digest_of(path: &Path, file_type: FileType, stat: &Stat, alg: HashAlgorithm) 
     if !file_type.is_file() {
         return Ok(Digest::Error(format!(
             "not a regular file: {}",
-            kind(file_type)
+            platform::special_kind(file_type)
         )));
     }
 
@@ -352,8 +386,7 @@ fn digest_of(path: &Path, file_type: FileType, stat: &Stat, alg: HashAlgorithm) 
 /// Hashes the file at `path`, provided it is still the file `stat` describes.
 fn hash_file(path: &Path, stat: &Stat, alg: HashAlgorithm) -> std::io::Result<Digest> {
     let file = std::fs::File::open(path)?;
-    let opened = file.metadata()?;
-    if (opened.dev(), opened.ino()) != (stat.dev, stat.ino) {
+    if platform::file_id(&file)? != (stat.dev, stat.ino) {
         return Ok(Digest::Error(
             "file was replaced while being indexed".into(),
         ));
@@ -361,24 +394,11 @@ fn hash_file(path: &Path, stat: &Stat, alg: HashAlgorithm) -> std::io::Result<Di
     Ok(Digest::Hash(alg.prefixed_digest(file)?))
 }
 
-fn kind(t: FileType) -> &'static str {
-    if t.is_fifo() {
-        "fifo"
-    } else if t.is_socket() {
-        "socket"
-    } else if t.is_block_device() {
-        "block_device"
-    } else if t.is_char_device() {
-        "char_device"
-    } else {
-        "unknown"
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs::{self, File, FileTimes};
+    #[cfg(unix)]
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::time::{Duration, SystemTime};
 
@@ -441,6 +461,7 @@ mod tests {
 
     /// Permission checks don't apply to root, so permission tests are
     /// skipped when running as root.
+    #[cfg(unix)]
     fn is_root() -> bool {
         let probe = tempfile::NamedTempFile::new().unwrap();
         fs::set_permissions(probe.path(), fs::Permissions::from_mode(0o000)).unwrap();
@@ -915,6 +936,7 @@ mod tests {
 
     // ---- snapshot: symlinks ---------------------------------------------
 
+    #[cfg(unix)]
     #[test]
     fn symlink_records_target_and_is_not_followed() {
         let tmp = root();
@@ -936,6 +958,7 @@ mod tests {
         assert!(!idx.entries.contains_key(&key("dir-link/secret")));
     }
 
+    #[cfg(unix)]
     #[test]
     fn symlink_out_of_workspace_is_not_followed() {
         let tmp = root();
@@ -951,6 +974,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn dangling_symlink_is_recorded() {
         let tmp = root();
@@ -961,6 +985,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn symlink_retarget_is_modified() {
         let tmp = root();
@@ -1234,6 +1259,7 @@ mod tests {
         assert_eq!(next.entries[&key("f")].digest, sha256(b"x"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn symlink_is_reused_across_algorithms() {
         let tmp = root();
@@ -1272,6 +1298,7 @@ mod tests {
 
     // ---- snapshot: unreadable and special files -------------------------
 
+    #[cfg(unix)]
     #[test]
     fn unreadable_file_is_recorded_as_error() {
         if is_root() {
@@ -1295,6 +1322,7 @@ mod tests {
         assert_eq!(idx.diff(&next).len(), 1);
     }
 
+    #[cfg(unix)]
     #[test]
     fn unreadable_directory_is_recorded_not_fatal() {
         if is_root() {
@@ -1318,6 +1346,7 @@ mod tests {
         assert!(!idx.entries.contains_key(&key("locked/inner.txt")));
     }
 
+    #[cfg(unix)]
     #[test]
     fn unreadable_directory_becoming_readable_reports_contents() {
         if is_root() {
@@ -1340,10 +1369,12 @@ mod tests {
         assert!(matches!(changes[1].change, Change::Created { .. }));
     }
 
+    #[cfg(unix)]
     fn first_result(root: &Path) -> Result<Index> {
         Index::default().snapshot(root, Path::new(SCOPE), ALG)
     }
 
+    #[cfg(unix)]
     #[test]
     fn unreadable_scope_root_is_fatal() {
         if is_root() {
@@ -1357,6 +1388,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn socket_is_recorded_as_not_a_regular_file() {
         let tmp = root();
@@ -1370,6 +1402,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn fifo_is_recorded_without_blocking() {
         let tmp = root();
@@ -1385,6 +1418,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn non_utf8_file_name_is_an_error() {
         use std::os::unix::ffi::OsStrExt;
@@ -1399,6 +1433,7 @@ mod tests {
         ));
     }
 
+    #[cfg(unix)]
     #[test]
     fn non_utf8_symlink_target_is_an_error() {
         use std::os::unix::ffi::OsStrExt;
@@ -1418,6 +1453,7 @@ mod tests {
         let tmp = root();
         write(tmp.path(), "a", b"a");
         write(tmp.path(), "b/c", b"c");
+        #[cfg(unix)]
         symlink("a", tmp.path().join(SCOPE).join("l")).unwrap();
         let mut idx = first(tmp.path());
         idx.entries

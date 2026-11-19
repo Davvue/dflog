@@ -8,10 +8,12 @@ use crate::journal::{
     CommandContext, CommandOutput, Digest, Entry, EntryKind, ExitStatus, Journal, ProgramInfo,
 };
 use crate::workspace::Workspace;
-use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
+#[cfg(unix)]
+use signal_hook::consts::SIGHUP;
+use signal_hook::consts::{SIGINT, SIGTERM};
 use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
-use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -20,7 +22,7 @@ use std::sync::atomic::AtomicBool;
 
 pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     // Load workspace data
-    let cwd = std::env::current_dir()?.canonicalize()?;
+    let cwd = dunce::canonicalize(std::env::current_dir()?)?;
     let ws = Workspace::discover(&cwd)?;
     let journal = Journal::for_workspace(&ws)?;
     journal.check_appendable()?;
@@ -46,7 +48,12 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
 
     // Register signal handlers
     let interrupted = Arc::new(AtomicBool::new(false));
-    for sig in [SIGINT, SIGTERM, SIGHUP] {
+    // Windows has no SIGHUP; closing the console window ends the process.
+    #[cfg(unix)]
+    let signals = [SIGINT, SIGTERM, SIGHUP];
+    #[cfg(not(unix))]
+    let signals = [SIGINT, SIGTERM];
+    for sig in signals {
         signal_hook::flag::register(sig, Arc::clone(&interrupted))?;
     }
 
@@ -114,34 +121,14 @@ pub fn run(run_args: RunArgs) -> Result<ExitCode> {
     Ok(exit_code)
 }
 
+/// Resolves `name` like a shell would: a name containing a path separator is
+/// taken relative to the cwd, anything else is searched in `PATH` (and on
+/// Windows also tried with each `PATHEXT` extension).
 fn resolve_program(name: &str) -> std::io::Result<PathBuf> {
-    let candidate = Path::new(name);
-    if name.contains('/') {
-        return candidate.canonicalize();
-    }
-
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    std::env::split_paths(&path)
-        .map(|dir| {
-            if dir.as_os_str().is_empty() {
-                PathBuf::from(".")
-            } else {
-                dir
-            }
-        })
-        .map(|dir| dir.join(name))
-        .find(|p| {
-            p.metadata()
-                .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-                .unwrap_or(false)
-        })
-        .ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("{name}: command not found"),
-            )
-        })?
-        .canonicalize()
+    let found = which::which(name).map_err(|_| {
+        std::io::Error::new(ErrorKind::NotFound, format!("{name}: command not found"))
+    })?;
+    dunce::canonicalize(found)
 }
 
 fn execute(
@@ -150,8 +137,12 @@ fn execute(
     stdout_file: File,
     stderr_file: File,
 ) -> std::io::Result<ExitStatus> {
-    let spawned = Command::new(program)
-        .arg0(&argv[0])
+    let mut cmd = Command::new(program);
+    // Keep the name the user typed as argv[0]. Windows has no separate
+    // argv[0]; the program sees the resolved path in its command line.
+    #[cfg(unix)]
+    cmd.arg0(&argv[0]);
+    let spawned = cmd
         .args(&argv[1..])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -193,10 +184,15 @@ fn execute(
     }
 
     let status = waited?;
-    Ok(match (status.code(), status.signal()) {
+    #[cfg(unix)]
+    let signal = status.signal();
+    // Windows always reports a code; crashes show up as NTSTATUS codes.
+    #[cfg(not(unix))]
+    let signal = None;
+    Ok(match (status.code(), signal) {
         (Some(code), _) => ExitStatus::Exited(code),
         (None, Some(sig)) => ExitStatus::Signal(sig),
-        (None, None) => unreachable!("unix exit status is either a code or a signal"),
+        (None, None) => unreachable!("exit status is either a code or a signal"),
     })
 }
 

@@ -41,7 +41,7 @@ impl Workspace {
     /// then loads its config. A broken config is an error; the search does
     /// not continue to parent workspaces.
     pub fn discover(start: &Path) -> Result<Self> {
-        let start = start.canonicalize()?;
+        let start = dunce::canonicalize(start)?;
         let root = start
             .ancestors()
             .find(|dir| dir.join(DFLOG_DIR).is_dir())

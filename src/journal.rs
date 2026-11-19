@@ -171,6 +171,7 @@ impl HostInfo {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct FileChange {
     /// Path relative to the workspace root.
+    #[serde(with = "crate::unix_path")]
     pub path: std::path::PathBuf,
     #[serde(flatten)]
     pub change: Change,
@@ -191,7 +192,7 @@ pub enum Digest {
     /// Algorithm-prefixed hash, e.g. `"sha256:..."`.
     Hash(String),
     /// Recorded with its target instead of being followed
-    Symlink(std::path::PathBuf),
+    Symlink(#[serde(with = "crate::unix_path")] std::path::PathBuf),
     /// The file could not be read (e.g. permission denied). It is recorded
     /// with the error instead of being left out of the entry.
     Error(String),
@@ -246,6 +247,7 @@ pub struct CommandContext {
     /// The executable `argv[0]` resolved to.
     pub program: Option<ProgramInfo>,
     /// Working directory, relative to the workspace root.
+    #[serde(with = "crate::unix_path")]
     pub cwd: std::path::PathBuf,
     pub status: ExitStatus,
     pub stdout: CommandOutput,
@@ -258,6 +260,7 @@ pub struct CommandContext {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct CommandOutput {
     /// Path relative to the `.dflog` directory.
+    #[serde(with = "crate::unix_path")]
     pub path: std::path::PathBuf,
     /// Algorithm-prefixed hash of the file's contents.
     pub hash: String,
@@ -267,7 +270,9 @@ pub struct CommandOutput {
 /// The executable that actually ran, for tool validation.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ProgramInfo {
-    /// Absolute path after `PATH` lookup.
+    /// Absolute path after `PATH` lookup. On Windows this keeps its drive
+    /// letter, e.g. `C:/Tools/x.exe`.
+    #[serde(with = "crate::unix_path")]
     pub path: std::path::PathBuf,
     /// Serialized as `hash` or `error`, like in `FileStat`.
     #[serde(flatten)]
@@ -1041,6 +1046,7 @@ mod tests {
         assert_eq!(std::fs::read(journal_path(&ws)).unwrap(), before);
     }
 
+    #[cfg(unix)]
     #[test]
     fn check_appendable_refuses_read_only_journal() {
         use std::os::unix::fs::PermissionsExt;
