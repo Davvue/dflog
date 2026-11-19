@@ -7,13 +7,14 @@ use crate::index::Index;
 use crate::journal::{Entry, EntryKind, Journal};
 use crate::workspace::Workspace;
 use std::path::Path;
+use std::process::ExitCode;
 
 /// Builds the case config from the arguments, creates the workspace at
 /// `base_path` and tells the examiner where to put case files.
 ///
 /// Fails with [`crate::error::Error::AlreadyInitialized`] if `base_path`
 /// already contains a workspace.
-pub fn run(init_args: InitArgs) -> Result<()> {
+pub fn run(init_args: InitArgs) -> Result<ExitCode> {
     let config = Config {
         case: CaseConfig {
             examiner: init_args.examiner,
@@ -57,5 +58,5 @@ pub fn run(init_args: InitArgs) -> Result<()> {
         env!("CARGO_PKG_NAME")
     );
 
-    Ok(())
+    Ok(ExitCode::SUCCESS)
 }
