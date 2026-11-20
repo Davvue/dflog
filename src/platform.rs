@@ -62,8 +62,7 @@ mod imp {
     use windows_sys::Win32::Storage::FileSystem::{
         BY_HANDLE_FILE_INFORMATION, FILE_BASIC_INFO, FILE_FLAG_BACKUP_SEMANTICS,
         FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ,
-        FILE_SHARE_WRITE, FileBasicInfo, GetFileInformationByHandle,
-        GetFileInformationByHandleEx,
+        FILE_SHARE_WRITE, FileBasicInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
     };
 
     /// 100 ns intervals between 1601-01-01 (FILETIME epoch) and 1970-01-01.

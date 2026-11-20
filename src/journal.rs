@@ -805,7 +805,7 @@ mod tests {
     fn join(lines: &[Vec<u8>]) -> Vec<u8> {
         lines
             .iter()
-            .flat_map(|l| l.iter().copied().chain([b'\n']))
+            .flat_map(|l| l.iter().copied().chain(*b"\n"))
             .collect()
     }
 

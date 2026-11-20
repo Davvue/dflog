@@ -126,7 +126,12 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_paths_round_trip_exactly() {
-        for native in [r"working\a\b.txt", r"C:\Tools\x.exe", r"\\server\share\f", r"."] {
+        for native in [
+            r"working\a\b.txt",
+            r"C:\Tools\x.exe",
+            r"\\server\share\f",
+            r".",
+        ] {
             let stored = to_unix(Path::new(native)).unwrap();
             assert!(!stored.contains('\\'), "{stored}");
             assert_eq!(from_unix(&stored), Path::new(native));

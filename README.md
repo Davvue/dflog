@@ -22,7 +22,8 @@ $ dflog export -f html
 
 ## Installation
 
-dflog needs Rust 1.89 or newer and runs on Unix-like systems (Linux, macOS).
+dflog needs Rust 1.89 or newer and runs on Linux and macOS. Windows support
+is experimental and hasn't been verified to work correctly yet.
 
 ```console
 $ cargo install --git https://github.com/Davvue/dflog
@@ -188,7 +189,8 @@ skipped.
   isn't, `run`, `record` and `reindex` stop with an error naming the file.
 - **Don't change the hash algorithm after `init`.** dflog compares hashes
   as recorded, so after a switch every file appears as modified.
-- **Unix only.** Windows is not supported.
+- **Windows support is experimental.** dflog builds on Windows but hasn't
+  been tested there yet. If something behaves differently on Windows, please open an issue.
 
 ## License
 
