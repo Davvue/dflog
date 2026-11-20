@@ -91,8 +91,11 @@ pub struct RecordArgs {
 
 #[derive(Args)]
 pub struct ExportArgs {
+    /// Which output format to use. If not provided, the output file's extension will be used
     #[arg(short, long)]
     pub format: Option<ReportFormat>,
+
+    /// Where to write the export to. Defaults to a timestamped file in <workspace root>/reports/
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 }

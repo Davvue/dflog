@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Added missing help descriptions for CLI options on `dflog export`
+
 ## [0.1.0] - 2026-11-20
 
 First public release. Its core features are:
