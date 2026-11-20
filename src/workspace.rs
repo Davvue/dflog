@@ -137,7 +137,7 @@ mod tests {
         std::fs::create_dir_all(&nested).unwrap();
 
         let found = Workspace::discover(&nested).unwrap();
-        assert_eq!(found.root, tmp.path().canonicalize().unwrap());
+        assert_eq!(found.root, dunce::canonicalize(tmp.path()).unwrap());
         assert_eq!(found.config, sample_config());
     }
 
