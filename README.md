@@ -35,6 +35,10 @@ Or, from a clone of this repository:
 $ cargo install --path .
 ```
 
+**Prebuilt binaries** for Linux, macOS and Windows are also available 
+on the [Releases page](https://github.com/Davvue/dflog/releases), 
+along with install scripts for each platform.
+
 ## Workflow
 
 ### 1. Create a workspace
