@@ -1,6 +1,6 @@
 [package]
 name = "dflog"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 # `File::lock`, used to serialize journal appends, is stable since 1.89.
 rust-version = "1.89"

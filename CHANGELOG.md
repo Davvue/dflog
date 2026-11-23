@@ -1,10 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0] - 2026-11-23
 
 ### Added
 
-- Shell autocompletions and value hints
+- Shell autocomplete script and value hints
 
 ### Fixed
 
