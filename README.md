@@ -39,6 +39,37 @@ $ cargo install --path .
 on the [Releases page](https://github.com/Davvue/dflog/releases), 
 along with install scripts for each platform.
 
+### Shell completion
+
+dflog can generate a completion script for bash, zsh, fish, elvish and
+PowerShell:
+
+```console
+$ dflog completions <SHELL>
+```
+
+For zsh, save the script to a directory on your `fpath`:
+
+```console
+$ mkdir -p ~/.zfunc
+$ dflog completions zsh > ~/.zfunc/_dflog
+```
+
+and add that directory to `~/.zshrc`, before `compinit` is called (add the
+`compinit` lines too if your configuration doesn't already have them):
+
+```zsh
+fpath=(~/.zfunc $fpath)
+autoload -Uz compinit && compinit
+```
+
+Then open a new shell. If completions don't show up, delete
+`~/.zcompdump*` and try again. With zsh, the command after `dflog run --`
+is completed as well, using that command's own completion.
+
+For other shells, see your shell's documentation on where to put
+completion scripts.
+
 ## Workflow
 
 ### 1. Create a workspace
