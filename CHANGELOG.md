@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Shell autocompletions and value hints
+
 ### Fixed
 
 - Reworded help messages

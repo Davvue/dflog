@@ -10,15 +10,16 @@
 
 use crate::hash::HashAlgorithm;
 use crate::report_renderer::ReportFormat;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueHint};
 use std::path::PathBuf;
+use clap_complete::Shell;
 
 /// Logging utility for digital forensic investigation
 #[derive(Parser)]
 #[command(version)]
 pub struct Cli {
     /// Run as if dflog was started in <PATH> instead of the current directory
-    #[arg(short = 'C', global = true, value_name = "PATH")]
+    #[arg(short = 'C', global = true, value_name = "PATH", value_hint = ValueHint::DirPath)]
     pub chdir: Option<PathBuf>,
 
     // The selected subcommand.
@@ -30,6 +31,8 @@ pub struct Cli {
 // subcommand's description in `dflog --help`.
 #[derive(Subcommand)]
 pub enum Command {
+    /// Print a shell completion script to stdout
+    Completions(CompletionsArgs),
     /// Export a report from the current journal
     Export(ExportArgs),
     /// Create a new dflog workspace
@@ -50,15 +53,15 @@ pub enum Command {
 #[derive(Args)]
 pub struct InitArgs {
     /// Name of the examiner responsible for this case
-    #[arg(long)]
+    #[arg(long, value_hint = ValueHint::Other)]
     pub examiner: String,
 
     /// Case identifier
-    #[arg(long)]
+    #[arg(long, value_hint = ValueHint::Other)]
     pub case_id: String,
 
     /// Note to record with workspace creation
-    #[arg(short, long)]
+    #[arg(short, long, value_hint = ValueHint::Other)]
     pub message: Option<String>,
 
     /// Hash algorithm used for this case
@@ -66,7 +69,7 @@ pub struct InitArgs {
     pub hash: HashAlgorithm,
 
     /// Directory to create the workspace in
-    #[arg(default_value = "./")]
+    #[arg(default_value = "./", value_hint = ValueHint::DirPath)]
     pub base_path: PathBuf,
 }
 
@@ -74,18 +77,18 @@ pub struct InitArgs {
 #[derive(Args)]
 pub struct RunArgs {
     /// Reason for running this command
-    #[arg(short, long)]
+    #[arg(short, long, value_hint = ValueHint::Other)]
     pub message: String,
 
     /// The command to run, after '--'
-    #[arg(last = true, required = true, value_name = "COMMAND")]
+    #[arg(last = true, required = true, value_name = "COMMAND", value_hint = ValueHint::CommandWithArguments)]
     pub command: Vec<String>,
 }
 
 #[derive(Args)]
 pub struct RecordArgs {
     /// Describe the changes made and why
-    #[arg(short, long)]
+    #[arg(short, long, value_hint = ValueHint::Other)]
     pub message: String,
 }
 
@@ -103,6 +106,13 @@ pub struct ExportArgs {
 #[derive(Args)]
 pub struct ReindexArgs {
     /// Reason for rebuilding the index
-    #[arg(short, long)]
+    #[arg(short, long, value_hint = ValueHint::Other)]
     pub message: String,
+}
+
+#[derive(Args)]
+pub struct CompletionsArgs {
+    /// Shell to generate completions for
+    #[arg(value_enum)]
+    pub shell: Shell,
 }

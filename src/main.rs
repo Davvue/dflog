@@ -30,7 +30,7 @@ mod workspace;
 
 use crate::cli::{Cli, Command};
 use crate::commands::{export, init, record, run, verify};
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use std::process::ExitCode;
 
 /// Parses the command line and runs the selected subcommand
@@ -50,6 +50,10 @@ fn run(args: Cli) -> error::Result<ExitCode> {
     }
 
     match args.command {
+        Command::Completions(args) => {
+            clap_complete::generate(args.shell, &mut Cli::command(), env!("CARGO_PKG_NAME"), &mut std::io::stdout());
+            Ok(ExitCode::SUCCESS)
+        }
         Command::Export(args) => export::run(args),
         Command::Init(args) => init::run(args),
         Command::Journal => commands::journal::run(),
