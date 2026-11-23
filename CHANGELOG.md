@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Reworded help messages
 - Added missing help descriptions for CLI options on `dflog export`
 
 ## [0.1.0] - 2026-11-20

@@ -40,9 +40,9 @@ pub enum Command {
     Reindex(ReindexArgs),
     /// Run a command and record it in the journal
     Run(RunArgs),
-    /// Record external changes
+    /// Record changes made to files in working/ outside dflog
     Record(RecordArgs),
-    /// Verify the current state of the journal chain
+    /// Check the journal's integrity
     Verify,
 }
 
@@ -57,7 +57,7 @@ pub struct InitArgs {
     #[arg(long)]
     pub case_id: String,
 
-    /// Provide an initialization message
+    /// Note to record with workspace creation
     #[arg(short, long)]
     pub message: Option<String>,
 
@@ -84,18 +84,18 @@ pub struct RunArgs {
 
 #[derive(Args)]
 pub struct RecordArgs {
-    /// Reason for external changes
+    /// Describe the changes made and why
     #[arg(short, long)]
     pub message: String,
 }
 
 #[derive(Args)]
 pub struct ExportArgs {
-    /// Which output format to use. If not provided, the output file's extension will be used
+    /// Report format. Defaults to the extension of --output, or to text if no output is specified
     #[arg(short, long)]
     pub format: Option<ReportFormat>,
 
-    /// Where to write the export to. Defaults to a timestamped file in <workspace root>/reports/
+    /// File to write the report to. Defaults reports/ in the workspace, named after report.name_format in .dflog/config.toml
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 }
