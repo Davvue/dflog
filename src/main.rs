@@ -51,7 +51,12 @@ fn run(args: Cli) -> error::Result<ExitCode> {
 
     match args.command {
         Command::Completions(args) => {
-            clap_complete::generate(args.shell, &mut Cli::command(), env!("CARGO_PKG_NAME"), &mut std::io::stdout());
+            clap_complete::generate(
+                args.shell,
+                &mut Cli::command(),
+                env!("CARGO_PKG_NAME"),
+                &mut std::io::stdout(),
+            );
             Ok(ExitCode::SUCCESS)
         }
         Command::Export(args) => export::run(args),

@@ -11,8 +11,8 @@
 use crate::hash::HashAlgorithm;
 use crate::report_renderer::ReportFormat;
 use clap::{Args, Parser, Subcommand, ValueHint};
-use std::path::PathBuf;
 use clap_complete::Shell;
+use std::path::PathBuf;
 
 /// Logging utility for digital forensic investigation
 #[derive(Parser)]
