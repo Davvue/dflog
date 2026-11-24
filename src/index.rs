@@ -1107,6 +1107,11 @@ mod tests {
         set_mtime(&path, old_mtime);
         let before = first(tmp.path());
 
+        // NTFS takes timestamps from a clock that only advances once per
+        // timer tick (~15.6 ms), so without a pause the overwrite can land in
+        // the same tick and leave ChangeTime unchanged. `aged` disables the
+        // racy check, so ctime is the only thing that can catch this here.
+        std::thread::sleep(Duration::from_millis(50));
         fs::write(&path, b"bbbb").unwrap(); // same inode, same size
         set_mtime(&path, old_mtime);
         assert_eq!(mtime(&path), old_mtime);
@@ -1117,6 +1122,7 @@ mod tests {
             (b.stat.size, b.stat.mtime, b.stat.ino),
             (a.stat.size, a.stat.mtime, a.stat.ino)
         );
+        assert_ne!(b.stat.ctime, a.stat.ctime, "test premise: ctime must move");
         assert_eq!(a.digest, sha256(b"bbbb"));
         assert_eq!(before.diff(&after).len(), 1);
     }
