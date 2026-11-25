@@ -18,12 +18,14 @@ clap_complete = "4.6.12"
 dunce = "1.0.5"
 gethostname = "1.1.0"
 jiff = { version = "0.2.45", features = ["serde"] }
+semver = "1.0.28"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 signal-hook = "0.4.6"
 thiserror = "2.0.21"
 toml = "1.2.1"
+ureq = { version = "3.5.2", features = ["json"] }
 walkdir = "2.5.0"
 which = "8.0.6"
 

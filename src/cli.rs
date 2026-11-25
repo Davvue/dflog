@@ -45,6 +45,8 @@ pub enum Command {
     Run(RunArgs),
     /// Record changes made to files in working/ outside dflog
     Record(RecordArgs),
+    /// Check for updates. Does not install updates
+    Update,
     /// Check the journal's integrity
     Verify,
 }

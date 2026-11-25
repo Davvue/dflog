@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `dflog update` to check for a new version
+
 ## [0.2.0] - 2026-11-23
 
 ### Added

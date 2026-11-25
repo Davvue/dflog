@@ -7,4 +7,5 @@ pub mod journal;
 pub mod record;
 pub mod reindex;
 pub mod run;
+pub mod update;
 pub mod verify;

@@ -29,7 +29,7 @@ mod unix_path;
 mod workspace;
 
 use crate::cli::{Cli, Command};
-use crate::commands::{export, init, record, run, verify};
+use crate::commands::{export, init, record, reindex, run, update, verify};
 use clap::{CommandFactory, Parser};
 use std::process::ExitCode;
 
@@ -62,9 +62,10 @@ fn run(args: Cli) -> error::Result<ExitCode> {
         Command::Export(args) => export::run(args),
         Command::Init(args) => init::run(args),
         Command::Journal => commands::journal::run(),
-        Command::Reindex(args) => commands::reindex::run(args),
+        Command::Reindex(args) => reindex::run(args),
         Command::Record(args) => record::run(args),
         Command::Run(args) => run::run(args),
+        Command::Update => update::run(),
         Command::Verify => verify::run(),
     }
 }
